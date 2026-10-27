@@ -164,7 +164,8 @@ public class EsempioGridlayout extends JFrame {
 
 
         add(cFinal,  BorderLayout.CENTER);
-        setSize(15000,10000);
+        setExtendedState(JFrame.MAXIMIZED_BOTH);
+
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         setVisible(true);
 
