@@ -84,3 +84,6 @@ import java.util.Set;
         }
     }
 }
+
+//spostare questi controlli nel lettore csv
+//vedi lettura file csv e hashmap in gestoredati
