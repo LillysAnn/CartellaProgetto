@@ -9,10 +9,7 @@ public class Materia {
 
     public String ToString(){
         return "Materia " + this.nMateria;
-        //return nMateria;
 
-
-        /// modifiche oggi
     }
 
 }
