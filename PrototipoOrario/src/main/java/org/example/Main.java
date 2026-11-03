@@ -2,7 +2,6 @@ package org.example;
 
 public class Main {
     public static void main(String[] args) {
-        //prova push
-        EsempioGridlayout es = new EsempioGridlayout();
+       LettoreCSV lettoreCSV = new LettoreCSV();
     }
 }

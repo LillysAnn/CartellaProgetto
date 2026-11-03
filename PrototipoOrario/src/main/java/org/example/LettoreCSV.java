@@ -7,11 +7,19 @@ import java.util.HashSet;
 import java.util.Set;
 
 
-public class LettoreCSV {
-    //spostare qui i controlli del file csv, vedere ultimo prompt di gemini per gestire queste classi
-    //compito: controlli file, se la riga non ha errori la invia a gestore dati
-    public void leggiEValida(/*String filePercorso*/) {
+import javax.swing.*;
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
+import java.util.HashSet;
+import java.util.Set;
 
+public class LettoreCSV {
+    public LettoreCSV(){
+
+    }
+
+    public void leggiEValida(){
         String filePercorso = "ore_docente_classe.csv";
         Set<String> righeViste = new HashSet<>();
         int errori = 0;
@@ -112,7 +120,7 @@ public class LettoreCSV {
             System.out.println("\nControllo terminato. Errori trovati: " + errori);
 
         } catch (IOException e) {
-            System.out.println("Errore nella lettura del file: " + e.getMessage());
+            JOptionPane.showMessageDialog(null, "Errori nella lettura del file: " + errori +"\nMessaggio:"+e.getMessage(),"Error",JOptionPane.ERROR_MESSAGE);
         }
     }
 }
