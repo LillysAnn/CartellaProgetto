@@ -1,5 +1,4 @@
 package org.example;
-import javax.swing.*;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
@@ -11,11 +10,10 @@ import java.util.Set;
             String file = "ore_docente_classe.csv";
             Set<String> righeViste = new HashSet<>();
 
-            int errori = 0;
             try (BufferedReader br = new BufferedReader(new FileReader(file))) {
                 String riga;
                 int numeroRiga = 0;
-                errori = 0;
+                int errori = 0;
 
                 while ((riga = br.readLine()) != null) {
                     numeroRiga++;
@@ -23,74 +21,68 @@ import java.util.Set;
                         continue;
                     }
 
-                    String[] campi = riga.split(",", -1);
+                String[] campi = riga.split(",", -1);
 
-                    if (campi.length != 6) {
-                        System.out.println("Riga " + numeroRiga + ": numero di colonne errato");
-                        errori++;
-                        continue;
-                    }
+                if (campi.length != 6) {
+                    System.out.println("Riga " + numeroRiga + ": numero di colonne errato");
+                    errori++;
+                    continue;
+                }
 
-                    for (int i = 0; i < campi.length; i++) {
-                        campi[i] = campi[i].trim();
-                    }
+                for (int i = 0; i < campi.length; i++) {
+                    campi[i] = campi[i].trim();
+                }
 
-                    boolean vuoto = false;
-                    for (String campo : campi) {
-                        if (campo.isEmpty()) {
-                            vuoto = true;
-                            break;
-                        }
-                    }
-
-                    if (vuoto) {
-                        System.out.println("Riga " + numeroRiga + ": campo vuoto");
-                        errori++;
-                        continue;
-                    }
-
-                    try {
-                        int anno = Integer.parseInt(campi[1]);
-                        if (anno < 1 || anno > 5) {
-                            System.out.println("Riga " + numeroRiga + ": anno non valido");
-                            errori++;
-                        }
-                    } catch (NumberFormatException e) {
-                        System.out.println("Riga " + numeroRiga + ": anno non numerico");
-                        errori++;
-                    }
-
-                    try {
-                        int ore = Integer.parseInt(campi[5]);
-                        if (ore <= 0) {
-                            System.out.println("Riga " + numeroRiga + ": ore non valide");
-                            errori++;
-                        }
-                    } catch (NumberFormatException e) {
-                        System.out.println("Riga " + numeroRiga + ": ore non numeriche");
-                        errori++;
-                    }
-
-                    String rigaNormalizzata = String.join(",", campi);
-
-                    if (!righeViste.add(rigaNormalizzata)) {
-                        System.out.println("Riga " + numeroRiga + ": record duplicato");
-                        errori++;
+                boolean vuoto = false;
+                for (String campo : campi) {
+                    if (campo.isEmpty()) {
+                        vuoto = true;
+                        break;
                     }
                 }
 
-                System.out.println("\nControllo terminato. Errori trovati: " + errori);
+                if (vuoto) {
+                    System.out.println("Riga " + numeroRiga + ": campo vuoto");
+                    errori++;
+                    continue;
+                }
 
-            } catch (IOException e) {
-                System.out.println("Errore nella lettura del file: " + e.getMessage());
-            }
-            if (errori == 0){
+                try {
+                    int anno = Integer.parseInt(campi[1]);
+                    if (anno < 1 || anno > 5) {
+                        System.out.println("Riga " + numeroRiga + ": anno non valido");
+                        errori++;
+                    }
+                } catch (NumberFormatException e) {
+                    System.out.println("Riga " + numeroRiga + ": anno non numerico");
+                    errori++;
+                }
 
+                try {
+                    int ore = Integer.parseInt(campi[5]);
+                    if (ore <= 0) {
+                        System.out.println("Riga " + numeroRiga + ": ore non valide");
+                        errori++;
+                    }
+                } catch (NumberFormatException e) {
+                    System.out.println("Riga " + numeroRiga + ": ore non numeriche");
+                    errori++;
+                }
+
+                String rigaNormalizzata = String.join(",", campi);
+
+                if (!righeViste.add(rigaNormalizzata)) {
+                    System.out.println("Riga " + numeroRiga + ": record duplicato");
+                    errori++;
+                }
             }
-            else{
-                JOptionPane.showMessageDialog(null, "Errori nella lettura del file: " + errori,"Error",JOptionPane.ERROR_MESSAGE);
-            }
+
+            System.out.println("\nControllo terminato. Errori trovati: " + errori);
+
+        }catch (IOException e) {
+            System.out.println("Errore nella lettura del file: " + e.getMessage());
         }
+    }
 }
 
 //spostare questi controlli nel lettore csv
