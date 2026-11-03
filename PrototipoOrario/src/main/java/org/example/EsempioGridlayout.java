@@ -2,7 +2,8 @@ package org.example;
 
 import javax.swing.*;
 import java.awt.*;
-
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 public class EsempioGridlayout extends JFrame {
 
     private static final Color SFONDO        = new Color(0xF3F5F9);
@@ -35,9 +36,43 @@ public class EsempioGridlayout extends JFrame {
     JTextField campi = new JTextField();;
     JLabel docente = new JLabel("Docente: ");
     JComboBox sceltaDocente = new JComboBox();
-
+    JTextField[][] celle = new JTextField[9][7];
 
     JButton download = new JButton("PDF") {
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            if (getModel().isPressed()) {
+                g2.setColor(PRIMARIO.darker());
+            } else if (getModel().isRollover()) {
+                g2.setColor(PRIMARIO_HOVER);
+            } else {
+                g2.setColor(PRIMARIO);
+            }
+            g2.fillRoundRect(0, 0, getWidth(), getHeight(), 18, 18);
+            g2.dispose();
+            super.paintComponent(g);
+        }
+    };
+    JButton generazione = new JButton("Generazione"){
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            if (getModel().isPressed()) {
+                g2.setColor(PRIMARIO.darker());
+            } else if (getModel().isRollover()) {
+                g2.setColor(PRIMARIO_HOVER);
+            } else {
+                g2.setColor(PRIMARIO);
+            }
+            g2.fillRoundRect(0, 0, getWidth(), getHeight(), 18, 18);
+            g2.dispose();
+            super.paintComponent(g);
+        }
+    };
+    JButton csv = new JButton("CSV"){
         @Override
         protected void paintComponent(Graphics g) {
             Graphics2D g2 = (Graphics2D) g.create();
@@ -66,7 +101,6 @@ public class EsempioGridlayout extends JFrame {
         titolo.setFont(new Font("Georgia", Font.BOLD + Font.ITALIC, 50));
         titolo.setForeground(PRIMARIO);
         titolo.setBorder(BorderFactory.createEmptyBorder(0, 0, 8, 0));
-        //titoloPanel.setBorder(BorderFactory.createLineBorder(Color.GRAY));
         titoloPanel.add(titolo);
 
         riga1.setLayout(new BoxLayout(riga1,BoxLayout.X_AXIS));
@@ -78,8 +112,6 @@ public class EsempioGridlayout extends JFrame {
         riga1.add(docente);
 
         sceltaDocente.setFont(new Font("Segoe UI", Font.PLAIN, 16));
-        sceltaDocente.setBackground(CARD);
-        sceltaDocente.setForeground(TESTO);
         sceltaDocente.setPreferredSize(new Dimension(240, 38));
         sceltaDocente.setMaximumSize(new Dimension(240, 38));
         riga1.add(sceltaDocente);
@@ -92,61 +124,31 @@ public class EsempioGridlayout extends JFrame {
         download.setBorderPainted(false);
         download.setFocusPainted(false);
         download.setOpaque(false);
-        download.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         download.setPreferredSize(new Dimension(100, 38));
-        download.setMaximumSize(new Dimension(100, 38));
+        csv.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        csv.setPreferredSize(new Dimension(100, 38));
+        csv.setForeground(Color.WHITE);
+        csv.setContentAreaFilled(false);
+        csv.setBorderPainted(false);
+        csv.setFocusPainted(false);
+        csv.setOpaque(false);
+        csv.setPreferredSize(new Dimension(100, 38));
+        generazione.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        generazione.setPreferredSize(new Dimension(150, 38));
+        generazione.setOpaque(false);
+        generazione.setFocusPainted(false);
+        generazione.setForeground(Color.WHITE);
+        generazione.setContentAreaFilled(false);
+        generazione.setBorderPainted(false);
+
+        riga1.add(generazione);
+        riga1.add(Box.createHorizontalStrut(30));
+        riga1.add(csv);
+        riga1.add(Box.createHorizontalStrut(30));
         riga1.add(download);
 
-        for (int r = 1; r <= 8; ++r){
-            orario[r][0] = ore[r - 1];;
-            for (int c = 1; c <= 6; ++c) {
-                orario[0][c] = giorni[c - 1];
-            }
-        }
+        generaTabella();
 
-        for (int r = 0; r < 9; ++r) {
-            for (int c = 0; c < 7; ++c) {
-                if (orario[r][c] == null){
-                    JTextField temp = new JTextField();
-                    temp.setPreferredSize(new Dimension(120,60));
-                    temp.setEditable(false);
-                    temp.setHorizontalAlignment(JTextField.CENTER);
-                    temp.setBorder(BorderFactory.createLineBorder(BORDO));
-                    temp.setFocusable(false);
-                    if (r == 0 || c == 0) {
-                        temp.setBackground(INTESTAZIONE);   // cella in alto a sinistra
-                    } else {
-                        temp.setBackground(r % 2 == 0 ? RIGA_PARI : RIGA_DISPARI);
-                    }
-                    tabella.add(temp);
-                }
-                else{
-                    JTextField temp2 = new JTextField();
-
-                    temp2.setPreferredSize(new Dimension(120,60));
-                    temp2.setEditable(false);
-                    temp2.setHorizontalAlignment(JTextField.CENTER);
-                    temp2.setFocusable(false);
-                    if (orario[r][c].equals("Mercoledi")){
-                        temp2.setFont(new Font("Segoe UI", Font.BOLD, 15));
-                        temp2.setText(orario[r][c]);
-                    }
-                    else{
-                        temp2.setFont(new Font("Segoe UI", Font.BOLD, 15));
-                        temp2.setText(orario[r][c]);
-                    }
-                    if (r == 0) {                       // intestazione giorni
-                        temp2.setBackground(INTESTAZIONE);
-                        temp2.setForeground(Color.WHITE);
-                    } else {                            // colonna ore
-                        temp2.setBackground(ORA_SFONDO);
-                        temp2.setForeground(PRIMARIO);
-                    }
-                    temp2.setBorder(BorderFactory.createLineBorder(BORDO));
-                    tabella.add(temp2);
-                }
-            }
-        }
         box.setLayout(new BoxLayout(box,BoxLayout.Y_AXIS));
         box.setOpaque(false);
         box.add(titoloPanel);
@@ -169,6 +171,71 @@ public class EsempioGridlayout extends JFrame {
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         setVisible(true);
 
+        csv.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                new csvLayout();
+            }
+        });
     }
+    public void generaTabella(){
+        for (int r = 1; r <= 8; ++r){
+            orario[r][0] = ore[r - 1];
+            for (int c = 1; c <= 6; ++c) {
+                orario[0][c] = giorni[c - 1];
+            }
+        }
 
-}
+        for (int r = 0; r < 9; ++r) {
+            for (int c = 0; c < 7; ++c) {
+                if (orario[r][c] != null && (orario[r][c].equals("Lunedi") || orario[r][c].equals("Martedi") || orario[r][c].equals("Mercoledi")
+                        || orario[r][c].equals("Giovedi") || orario[r][c].equals("Venerdi") || orario[r][c].equals("Sabato")
+                        || orario[r][c].equals("8:00") || orario[r][c].equals("9:00") || orario[r][c].equals("10:00")
+                        || orario[r][c].equals("11:00") || orario[r][c].equals("12:00") || orario[r][c].equals("13:00")
+                        || orario[r][c].equals("14:00") || orario[r][c].equals("15:00"))) {
+
+                    JTextField temp2 = new JTextField();
+                    temp2.setPreferredSize(new Dimension(120,60));
+                    temp2.setEditable(false);
+                    temp2.setHorizontalAlignment(JTextField.CENTER);
+                    temp2.setFocusable(false);
+                    temp2.setFont(new Font("Segoe UI", Font.BOLD, 15));
+                    temp2.setText(orario[r][c]);
+                    if (r == 0) {                       // intestazione giorni
+                        temp2.setBackground(INTESTAZIONE);
+                        temp2.setForeground(Color.WHITE);
+                    } else {                            // colonna ore
+                        temp2.setBackground(ORA_SFONDO);
+                        temp2.setForeground(PRIMARIO);
+                    }
+                    temp2.setBorder(BorderFactory.createLineBorder(BORDO));
+                    celle[r][c] = temp2;
+                    tabella.add(temp2);
+                }
+                else{
+                    JTextField temp = new JTextField();
+                    temp.setPreferredSize(new Dimension(120,60));
+                    temp.setEditable(false);
+                    temp.setHorizontalAlignment(JTextField.CENTER);
+                    temp.setBorder(BorderFactory.createLineBorder(BORDO));
+                    temp.setFocusable(false);
+                    temp.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+                    temp.setForeground(TESTO);
+                    if (r == 0 || c == 0) {
+                        temp.setBackground(INTESTAZIONE);   // cella in alto a sinistra
+                    } else {
+                        if (r % 2 == 0) {
+                            temp.setBackground(RIGA_PARI);
+                        } else {
+                            temp.setBackground(RIGA_DISPARI);
+                        }
+                    }
+                    if (orario[r][c] != null) {
+                        temp.setText(orario[r][c]);         // se già compilata
+                    }
+                    celle[r][c] = temp;
+                    tabella.add(temp);
+                }
+            }
+        }
+    }
