@@ -6,24 +6,25 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 public class EsempioGridlayout extends JFrame {
 
-    private static final Color SFONDO        = new Color(0xF3F5F9);
-    private static final Color CARD          = Color.WHITE;
-    private static final Color PRIMARIO      = new Color(0x2F4B8F);
-    private static final Color PRIMARIO_HOVER= new Color(0x3F62BA);
-    private static final Color INTESTAZIONE  = new Color(0x2F4B8F);
-    private static final Color ORA_SFONDO    = new Color(0xE3E9F6);
-    private static final Color RIGA_PARI     = new Color(0xFFFFFF);
-    private static final Color RIGA_DISPARI  = new Color(0xF7F9FD);
-    private static final Color BORDO         = new Color(0xD5DBE8);
-    private static final Color TESTO         = new Color(0x2B3245);
+    private static final Color SFONDO = new Color(0xF3F5F9);
+    private static final Color CARD = Color.WHITE;
+    private static final Color PRIMARIO = new Color(0x2F4B8F);
+    private static final Color PRIMARIO_HOVER = new Color(0x3F62BA);
+    private static final Color INTESTAZIONE = new Color(0x2F4B8F);
+    private static final Color ORA_SFONDO = new Color(0xE3E9F6);
+    private static final Color RIGA_PARI = new Color(0xFFFFFF);
+    private static final Color RIGA_DISPARI = new Color(0xF7F9FD);
+    private static final Color BORDO = new Color(0xD5DBE8);
+    private static final Color TESTO = new Color(0x2B3245);
 
     static {
         try {
             UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-        } catch (Exception ignored) { }
+        } catch (Exception ignored) {
+        }
     }
 
-    JPanel riga1= new JPanel();
+    JPanel riga1 = new JPanel();
     JPanel titoloPanel = new JPanel();
     JLabel titolo = new JLabel("Orario Docenti");
     JPanel box = new JPanel();
@@ -33,7 +34,8 @@ public class EsempioGridlayout extends JFrame {
     String[][] orario = new String[9][7];
     String[] giorni = {"Lunedi", "Martedi", "Mercoledi", "Giovedi", "Venerdi", "Sabato"};
     String[] ore = {"8:00", "9:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00"};
-    JTextField campi = new JTextField();;
+    JTextField campi = new JTextField();
+    ;
     JLabel docente = new JLabel("Docente: ");
     JComboBox sceltaDocente = new JComboBox();
     JTextField[][] celle = new JTextField[9][7];
@@ -55,7 +57,7 @@ public class EsempioGridlayout extends JFrame {
             super.paintComponent(g);
         }
     };
-    JButton generazione = new JButton("Generazione"){
+    JButton generazione = new JButton("Generazione") {
         @Override
         protected void paintComponent(Graphics g) {
             Graphics2D g2 = (Graphics2D) g.create();
@@ -72,7 +74,7 @@ public class EsempioGridlayout extends JFrame {
             super.paintComponent(g);
         }
     };
-    JButton csv = new JButton("CSV"){
+    JButton csv = new JButton("CSV") {
         @Override
         protected void paintComponent(Graphics g) {
             Graphics2D g2 = (Graphics2D) g.create();
@@ -92,7 +94,7 @@ public class EsempioGridlayout extends JFrame {
 
     public EsempioGridlayout() {
         super("Tabella orari");
-        tabella.setLayout(new GridLayout(9,7));
+        tabella.setLayout(new GridLayout(9, 7));
         tabella.setBackground(CARD);
         tabella.setBorder(BorderFactory.createLineBorder(BORDO, 1));
 
@@ -103,8 +105,8 @@ public class EsempioGridlayout extends JFrame {
         titolo.setBorder(BorderFactory.createEmptyBorder(0, 0, 8, 0));
         titoloPanel.add(titolo);
 
-        riga1.setLayout(new BoxLayout(riga1,BoxLayout.X_AXIS));
-        riga1.setSize(new Dimension(50,30));
+        riga1.setLayout(new BoxLayout(riga1, BoxLayout.X_AXIS));
+        riga1.setSize(new Dimension(50, 30));
         riga1.setOpaque(false);
 
         docente.setFont(new Font("Segoe UI", Font.BOLD, 20));
@@ -149,7 +151,7 @@ public class EsempioGridlayout extends JFrame {
 
         generaTabella();
 
-        box.setLayout(new BoxLayout(box,BoxLayout.Y_AXIS));
+        box.setLayout(new BoxLayout(box, BoxLayout.Y_AXIS));
         box.setOpaque(false);
         box.add(titoloPanel);
         box.add(Box.createVerticalStrut(100));
@@ -165,7 +167,7 @@ public class EsempioGridlayout extends JFrame {
         cFinal.add(wrapper, BorderLayout.CENTER);
 
 
-        add(cFinal,  BorderLayout.CENTER);
+        add(cFinal, BorderLayout.CENTER);
         setExtendedState(JFrame.MAXIMIZED_BOTH);
 
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
@@ -178,8 +180,9 @@ public class EsempioGridlayout extends JFrame {
             }
         });
     }
-    public void generaTabella(){
-        for (int r = 1; r <= 8; ++r){
+
+    public void generaTabella() {
+        for (int r = 1; r <= 8; ++r) {
             orario[r][0] = ore[r - 1];
             for (int c = 1; c <= 6; ++c) {
                 orario[0][c] = giorni[c - 1];
@@ -195,7 +198,7 @@ public class EsempioGridlayout extends JFrame {
                         || orario[r][c].equals("14:00") || orario[r][c].equals("15:00"))) {
 
                     JTextField temp2 = new JTextField();
-                    temp2.setPreferredSize(new Dimension(120,60));
+                    temp2.setPreferredSize(new Dimension(120, 60));
                     temp2.setEditable(false);
                     temp2.setHorizontalAlignment(JTextField.CENTER);
                     temp2.setFocusable(false);
@@ -211,10 +214,9 @@ public class EsempioGridlayout extends JFrame {
                     temp2.setBorder(BorderFactory.createLineBorder(BORDO));
                     celle[r][c] = temp2;
                     tabella.add(temp2);
-                }
-                else{
+                } else {
                     JTextField temp = new JTextField();
-                    temp.setPreferredSize(new Dimension(120,60));
+                    temp.setPreferredSize(new Dimension(120, 60));
                     temp.setEditable(false);
                     temp.setHorizontalAlignment(JTextField.CENTER);
                     temp.setBorder(BorderFactory.createLineBorder(BORDO));
@@ -239,3 +241,4 @@ public class EsempioGridlayout extends JFrame {
             }
         }
     }
+}

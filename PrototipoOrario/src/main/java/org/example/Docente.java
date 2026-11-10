@@ -7,9 +7,9 @@ public class Docente {
 
 
     public Docente(String nome) {
-        this.nome = nome;
+        this.nomeCognome = nome;
     }
     public String toString() {
-        return nome;
+        return nomeCognome;
     }
 }
