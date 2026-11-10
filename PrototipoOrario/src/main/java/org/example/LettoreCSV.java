@@ -16,7 +16,7 @@ import java.util.Set;
 
 public class LettoreCSV {
     public LettoreCSV(){
-
+        GestoreDati g = new GestoreDati();
     }
 
     public void leggiEValida(){
@@ -115,6 +115,16 @@ public class LettoreCSV {
 
                 // --- SE LA RIGA È VALIDA, LA Invii AL GESTORE DATI ---
                 // gestoreDati.inviaRiga(campi);
+
+                // Dentro LettoreCSV.java, alla fine del ciclo per ogni riga VALIDA:
+                String docente = campi[0].trim();
+                int anno = Integer.parseInt(campi[1].trim());
+                char sezione = campi[2].trim().charAt(0);
+                String materia = campi[3].trim();
+                int ore = Integer.parseInt(campi[5].trim());
+
+                // Invochi il metodo di GestoreDati
+                g.aggiungiAssegnazione(docente, anno, sezione, materia, ore);
             }
 
             System.out.println("\nControllo terminato. Errori trovati: " + errori);
