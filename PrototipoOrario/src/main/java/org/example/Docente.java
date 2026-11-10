@@ -1,7 +1,5 @@
 package org.example;
 
-import java.lang.reflect.Array;
-
 public class Docente {
     private String nomeCognome;
 
@@ -9,7 +7,13 @@ public class Docente {
     public Docente(String nome) {
         this.nomeCognome = nome;
     }
+
+    public String getNome() {
+        return nomeCognome;
+    }
+
     public String toString() {
         return nomeCognome;
     }
 }
+

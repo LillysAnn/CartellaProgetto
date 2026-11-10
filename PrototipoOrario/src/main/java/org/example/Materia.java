@@ -7,7 +7,11 @@ public class Materia {
         this.nMateria = m;
     }
 
-    public String ToString(){
+    public String getNome() {
+        return nMateria;
+    }
+
+    public String toString(){
         return "Materia " + this.nMateria;
 
     }

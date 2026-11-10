@@ -1,30 +1,49 @@
 package org.example;
 
-import java.io.BufferedReader;
-import java.io.FileReader;
-import java.io.IOException;
-import java.util.HashSet;
-import java.util.Set;
-
-
 import javax.swing.*;
 import java.io.BufferedReader;
-import java.io.FileReader;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 public class LettoreCSV {
-    public LettoreCSV(){
-        GestoreDati g = new GestoreDati();
+
+    private GestoreDati g = new GestoreDati();
+    private int errori = 0;
+    private final List<String> messaggiErrore = new ArrayList<>();
+
+    public GestoreDati getGestoreDati() {
+        return g;
     }
 
-    public void leggiEValida(){
-        String filePercorso = "ore_docente_classe.csv";
-        Set<String> righeViste = new HashSet<>();
-        int errori = 0;
+    public int getErrori() {
+        return errori;
+    }
 
-        try (BufferedReader br = new BufferedReader(new FileReader(filePercorso))) {
+    public List<String> getMessaggiErrore() {
+        return messaggiErrore;
+    }
+
+    private void segnala(int numeroRiga, String messaggio) {
+        String testo = "Riga " + numeroRiga + ": " + messaggio;
+        System.out.println(testo);
+        messaggiErrore.add(testo);
+        errori++;
+    }
+
+    // Ritorna true se il file e' stato letto (anche con righe scartate), false se non e' stato possibile aprirlo
+    public boolean leggiEValida(String filePercorso) {
+        g = new GestoreDati();
+        errori = 0;
+        messaggiErrore.clear();
+        Set<String> righeViste = new HashSet<>();
+
+        try (BufferedReader br = Files.newBufferedReader(Path.of(filePercorso), StandardCharsets.UTF_8)) {
             String riga;
             int numeroRiga = 0;
 
@@ -37,16 +56,15 @@ public class LettoreCSV {
                 }
 
                 // Salta righe totalmente vuote nel file
-               /* if (riga.trim().isEmpty()) {
+                if (riga.trim().isEmpty()) {
                     continue;
-                }*/
+                }
 
                 String[] campi = riga.split(",", -1);
 
                 // 1. Controllo numero di colonne
                 if (campi.length != 6) {
-                    System.out.println("Riga " + numeroRiga + ": numero di colonne errato");
-                    errori++;
+                    segnala(numeroRiga, "numero di colonne errato");
                     continue;
                 }
 
@@ -65,39 +83,34 @@ public class LettoreCSV {
                 }
 
                 if (vuoto) {
-                    System.out.println("Riga " + numeroRiga + ": campo vuoto");
-                    errori++;
+                    segnala(numeroRiga, "campo vuoto");
                     continue;
                 }
 
-                boolean rigaValida = true;//VEDI
+                boolean rigaValida = true;
 
                 // 3. Controllo Anno (deve essere tra 1 e 5)
                 try {
                     int anno = Integer.parseInt(campi[1]);
                     if (anno < 1 || anno > 5) {
-                        System.out.println("Riga " + numeroRiga + ": anno non valido (deve essere tra 1 e 5)");
-                        errori++;
+                        segnala(numeroRiga, "anno non valido (deve essere tra 1 e 5)");
                         rigaValida = false;
                     }
                 } catch (NumberFormatException e) {
-                    System.out.println("Riga " + numeroRiga + ": anno non numerico");
-                    errori++;
-                    rigaValida = false;//VEDI
+                    segnala(numeroRiga, "anno non numerico");
+                    rigaValida = false;
                 }
 
                 // 4. Controllo Ore (deve essere > 0)
                 try {
                     int ore = Integer.parseInt(campi[5]);
                     if (ore <= 0) {
-                        System.out.println("Riga " + numeroRiga + ": ore non valide (devono essere > 0)");
-                        errori++;
-                        rigaValida = false;//VEDI
+                        segnala(numeroRiga, "ore non valide (devono essere > 0)");
+                        rigaValida = false;
                     }
                 } catch (NumberFormatException e) {
-                    System.out.println("Riga " + numeroRiga + ": ore non numeriche");
-                    errori++;
-                    rigaValida = false;//VEDI
+                    segnala(numeroRiga, "ore non numeriche");
+                    rigaValida = false;
                 }
 
                 // Se anno o ore non sono validi, passa alla prossima riga senza registrarla o inviarla
@@ -108,29 +121,28 @@ public class LettoreCSV {
                 // 5. Controllo Duplicati
                 String rigaNormalizzata = String.join(",", campi);
                 if (!righeViste.add(rigaNormalizzata)) {
-                    System.out.println("Riga " + numeroRiga + ": record duplicato");
-                    errori++;
+                    segnala(numeroRiga, "record duplicato");
                     continue;
                 }
 
-                // --- SE LA RIGA È VALIDA, LA Invii AL GESTORE DATI ---
-                // gestoreDati.inviaRiga(campi);
+                // --- RIGA VALIDA: la inviamo al GestoreDati ---
+                // colonne: docente,anno,sezione,indirizzo,materia,ore
+                String docente = campi[0];
+                int anno = Integer.parseInt(campi[1]);
+                char sezione = campi[2].charAt(0);
+                String indirizzo = campi[3];
+                String materia = campi[4];
+                int ore = Integer.parseInt(campi[5]);
 
-                // Dentro LettoreCSV.java, alla fine del ciclo per ogni riga VALIDA:
-                String docente = campi[0].trim();
-                int anno = Integer.parseInt(campi[1].trim());
-                char sezione = campi[2].trim().charAt(0);
-                String materia = campi[3].trim();
-                int ore = Integer.parseInt(campi[5].trim());
-
-                // Invochi il metodo di GestoreDati
-                g.aggiungiAssegnazione(docente, anno, sezione, materia, ore);
+                g.aggiungiAssegnazione(docente, anno, sezione, indirizzo, materia, ore);
             }
 
             System.out.println("\nControllo terminato. Errori trovati: " + errori);
+            return true;
 
         } catch (IOException e) {
-            JOptionPane.showMessageDialog(null, "Errori nella lettura del file: " + errori +"\nMessaggio:"+e.getMessage(),"Error",JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(null, "Impossibile leggere il file.\nMessaggio: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            return false;
         }
     }
 }
