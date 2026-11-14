@@ -22,3 +22,4 @@ public class Assegnazione {
     public int getOreSettimanali() {
         return oreSettimanali; }
 }
+//14/11

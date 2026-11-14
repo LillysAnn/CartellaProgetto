@@ -38,3 +38,4 @@ public class Lezione {
     public void setOra(int ora) {
         this.ora = ora; }
 }
+//14/11
