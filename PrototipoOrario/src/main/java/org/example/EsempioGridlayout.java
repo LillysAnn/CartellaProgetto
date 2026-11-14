@@ -4,12 +4,18 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import javax.swing.filechooser.FileNameExtensionFilter;
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.TreeSet;
 public class EsempioGridlayout extends JFrame {
 
-    // Orario scolastico usato dal generatore (la griglia grafica ha 6 giorni x 8 ore: le celle fuori da questi limiti restano grigie)
+    // Orario scolastico usato dal generatore: 6 giorni x 8 righe (8-13 mattina, 13-14 PAUSA, 14-16 pomeriggio).
+    // La riga della pausa (GeneratoreOrario.ORA_PAUSA) resta sempre grigia e vuota.
     private static final int GIORNI_ATTIVI = 6;
-    private static final int ORE_ATTIVE = 6;
+    private static final int ORE_ATTIVE = 8;
 
     private static final Color CELLA_OCCUPATA = new Color(0xDDE7FA);
     private static final Color CELLA_NON_ATTIVA = new Color(0xE9ECF2);
@@ -46,6 +52,9 @@ public class EsempioGridlayout extends JFrame {
     ;
     JLabel docente = new JLabel("Docente: ");
     JComboBox<String> sceltaDocente = new JComboBox<>();
+    JLabel classeLabel = new JLabel("Classe: ");
+    JComboBox<String> sceltaClasse = new JComboBox<>();
+    private boolean vistaClasse = false;   // false = si vede l'orario del docente, true = quello della classe
     JTextField[][] celle = new JTextField[9][7];
     JLabel info = new JLabel("Carica un file CSV per iniziare");
 
@@ -131,7 +140,17 @@ public class EsempioGridlayout extends JFrame {
         sceltaDocente.setMaximumSize(new Dimension(240, 38));
         riga1.add(sceltaDocente);
 
-        riga1.add(Box.createHorizontalStrut(500));
+        riga1.add(Box.createHorizontalStrut(30));
+        classeLabel.setFont(new Font("Segoe UI", Font.BOLD, 20));
+        classeLabel.setForeground(TESTO);
+        riga1.add(classeLabel);
+        sceltaClasse.setFont(new Font("Segoe UI", Font.PLAIN, 16));
+        sceltaClasse.setPreferredSize(new Dimension(200, 38));
+        sceltaClasse.setMaximumSize(new Dimension(200, 38));
+        sceltaClasse.addItem("(nessuna)");
+        riga1.add(sceltaClasse);
+
+        riga1.add(Box.createHorizontalStrut(150));
 
         download.setFont(new Font("Segoe UI", Font.BOLD, 16));
         download.setForeground(Color.WHITE);
@@ -205,8 +224,28 @@ public class EsempioGridlayout extends JFrame {
             @Override
             public void actionPerformed(ActionEvent e) {
                 if (!caricamentoInCorso) {
+                    vistaClasse = false;
+                    azzeraSceltaClasse();
                     mostraDocente();
                 }
+            }
+        });
+
+        // cambio classe nel menu a tendina -> mostra l'orario della classe ("(nessuna)" = torna ai docenti)
+        sceltaClasse.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                if (!caricamentoInCorso) {
+                    vistaClasse = sceltaClasse.getSelectedIndex() > 0;
+                    aggiornaVista();
+                }
+            }
+        });
+
+        download.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                esportaPdf();
             }
         });
 
@@ -227,6 +266,12 @@ public class EsempioGridlayout extends JFrame {
         for (String nome : gestore.getDocenti()) {
             sceltaDocente.addItem(nome);
         }
+        sceltaClasse.removeAllItems();
+        sceltaClasse.addItem("(nessuna)");
+        for (String nome : nomiClassi()) {
+            sceltaClasse.addItem(nome);
+        }
+        vistaClasse = false;
         caricamentoInCorso = false;
         if (sceltaDocente.getItemCount() > 0) {
             sceltaDocente.setSelectedIndex(0);
@@ -256,7 +301,18 @@ public class EsempioGridlayout extends JFrame {
         }
 
         List<Lezione> nonCollocate = GeneratoreOrario.genera(gestore.getListaLezioni(), giorni, GIORNI_ATTIVI, ORE_ATTIVE);
-        mostraDocente();
+        aggiornaVista();
+
+        // controllo indipendente: un orario che viola i vincoli non viene mai dichiarato valido
+        List<String> violazioni = GeneratoreOrario.verifica(gestore.getListaLezioni());
+        if (!violazioni.isEmpty()) {
+            StringBuilder v = new StringBuilder("L'orario viola dei vincoli obbligatori:");
+            for (int i = 0; i < violazioni.size() && i < 10; i++) {
+                v.append("\n  - ").append(violazioni.get(i));
+            }
+            JOptionPane.showMessageDialog(this, v.toString(), "Vincoli violati", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
 
         int totali = gestore.getListaLezioni().size();
         if (nonCollocate.isEmpty()) {
@@ -274,6 +330,13 @@ public class EsempioGridlayout extends JFrame {
             if (nonCollocate.size() > 15) {
                 msg.append("\n  ... e altre ").append(nonCollocate.size() - 15);
             }
+            List<String> cause = GeneratoreOrario.controllaCapacita(gestore.getListaLezioni(), GIORNI_ATTIVI, ORE_ATTIVE);
+            if (!cause.isEmpty()) {
+                msg.append("\n\nPossibili cause (ore richieste superiori agli slot disponibili):");
+                for (int i = 0; i < cause.size() && i < 10; i++) {
+                    msg.append("\n  - ").append(cause.get(i));
+                }
+            }
             JOptionPane.showMessageDialog(this, msg.toString(), "Orario incompleto", JOptionPane.WARNING_MESSAGE);
         }
     }
@@ -281,6 +344,7 @@ public class EsempioGridlayout extends JFrame {
     // Mostra nella tabella l'orario del docente selezionato
     public void mostraDocente() {
         pulisciTabella();
+        titolo.setText("Orario Docenti");
         String nome = (String) sceltaDocente.getSelectedItem();
         if (gestore == null || nome == null) {
             info.setText("Carica un file CSV per iniziare");
@@ -315,6 +379,141 @@ public class EsempioGridlayout extends JFrame {
         info.setText(testo);
     }
 
+    // aggiorna la tabella in base alla vista attiva (docente o classe)
+    private void aggiornaVista() {
+        if (vistaClasse) {
+            mostraClasse();
+        } else {
+            mostraDocente();
+        }
+    }
+
+    // riporta il menu delle classi su "(nessuna)" senza scatenare eventi
+    private void azzeraSceltaClasse() {
+        boolean prima = caricamentoInCorso;
+        caricamentoInCorso = true;
+        if (sceltaClasse.getItemCount() > 0) {
+            sceltaClasse.setSelectedIndex(0);
+        }
+        caricamentoInCorso = prima;
+    }
+
+    // Mostra nella tabella l'orario della classe selezionata: si ricostruisce dalle lezioni dei docenti
+    // che insegnano in quella classe (la cella mostra la materia, il docente e' nel tooltip)
+    public void mostraClasse() {
+        pulisciTabella();
+        titolo.setText("Orario Classi");
+        String nome = (String) sceltaClasse.getSelectedItem();
+        if (gestore == null || nome == null || sceltaClasse.getSelectedIndex() <= 0) {
+            info.setText("Carica un file CSV per iniziare");
+            return;
+        }
+
+        int totali = 0;
+        int collocate = 0;
+        for (Lezione l : gestore.getListaLezioni()) {
+            if (!l.getClasse().getNome().equals(nome)) {
+                continue;
+            }
+            totali++;
+            int r = l.getOra();
+            int c = indiceGiorno(l.getGiorno());
+            if (r >= 1 && r <= 8 && c >= 1) {
+                collocate++;
+                JTextField cella = celle[r][c];
+                cella.setText(l.getMateria().getNome());
+                cella.setToolTipText(l.getMateria().getNome() + " - " + l.getDocente().getNome());
+                cella.setBackground(CELLA_OCCUPATA);
+            }
+        }
+
+        String testo = "Classe " + nome + "  |  " + totali + " ore settimanali";
+        if (collocate == 0) {
+            testo += "  |  premi Generazione per creare l'orario";
+        } else {
+            testo += "  |  collocate " + collocate + "/" + totali;
+        }
+        info.setText(testo);
+    }
+
+    // nomi delle classi presenti nel CSV (ordinati)
+    private List<String> nomiClassi() {
+        TreeSet<String> nomi = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        for (Lezione l : gestore.getListaLezioni()) {
+            nomi.add(l.getClasse().getNome());
+        }
+        return new ArrayList<>(nomi);
+    }
+
+    // tabella [ora - 1][giorno] di un docente o di una classe, pronta per il PDF
+    private String[][] tabellaPerPdf(String nome, boolean perClasse) {
+        String[][] t = new String[ORE_ATTIVE][GIORNI_ATTIVI];
+        for (int r = 0; r < ORE_ATTIVE; r++) {
+            for (int c = 0; c < GIORNI_ATTIVI; c++) {
+                t[r][c] = "";
+            }
+        }
+        for (Lezione l : gestore.getListaLezioni()) {
+            String chi = perClasse ? l.getClasse().getNome() : l.getDocente().getNome();
+            int r = l.getOra();
+            int c = indiceGiorno(l.getGiorno());
+            if (!chi.equals(nome) || r < 1 || r > ORE_ATTIVE || c < 1) {
+                continue;
+            }
+            t[r - 1][c - 1] = perClasse ? l.getMateria().getNome() + " - " + l.getDocente().getNome()
+                    : l.getClasse().getNome() + " - " + l.getMateria().getNome();
+        }
+        return t;
+    }
+
+    // Pulsante "PDF": una pagina per ogni docente e una per ogni classe
+    private void esportaPdf() {
+        boolean generato = false;
+        if (gestore != null) {
+            for (Lezione l : gestore.getListaLezioni()) {
+                if (l.getGiorno() != null) {
+                    generato = true;
+                    break;
+                }
+            }
+        }
+        if (!generato) {
+            JOptionPane.showMessageDialog(this, "Carica un CSV e genera l'orario prima di esportare.",
+                    "Attenzione", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        JFileChooser scelta = new JFileChooser();
+        scelta.setFileFilter(new FileNameExtensionFilter("File PDF", "pdf"));
+        scelta.setSelectedFile(new File("orario.pdf"));
+        if (scelta.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) {
+            return;
+        }
+        File file = scelta.getSelectedFile();
+        if (!file.getName().toLowerCase().endsWith(".pdf")) {
+            file = new File(file.getParentFile(), file.getName() + ".pdf");
+        }
+
+        List<String> titoli = new ArrayList<>();
+        List<String[][]> tabelle = new ArrayList<>();
+        for (String d : gestore.getDocenti()) {
+            titoli.add("Docente: " + d);
+            tabelle.add(tabellaPerPdf(d, false));
+        }
+        for (String c : nomiClassi()) {
+            titoli.add("Classe: " + c);
+            tabelle.add(tabellaPerPdf(c, true));
+        }
+        try {
+            GeneratoreOrario.esportaPdf(file.toPath(), titoli, tabelle, giorni);
+            JOptionPane.showMessageDialog(this, "PDF salvato (" + tabelle.size() + " pagine):\n" + file.getAbsolutePath(),
+                    "Esportazione", JOptionPane.INFORMATION_MESSAGE);
+        } catch (IOException e) {
+            JOptionPane.showMessageDialog(this, "Impossibile salvare il PDF.\nMessaggio: " + e.getMessage(),
+                    "Errore", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
     // posizione della colonna del giorno (1 = Lunedi), -1 se non trovato
     private int indiceGiorno(String giorno) {
         for (int c = 1; c <= 6; c++) {
@@ -332,7 +531,7 @@ public class EsempioGridlayout extends JFrame {
                 JTextField cella = celle[r][c];
                 cella.setText("");
                 cella.setToolTipText(null);
-                if (r > ORE_ATTIVE || c > GIORNI_ATTIVI) {
+                if (r > ORE_ATTIVE || c > GIORNI_ATTIVI || r == GeneratoreOrario.ORA_PAUSA) {
                     cella.setBackground(CELLA_NON_ATTIVA);
                 } else if (r % 2 == 0) {
                     cella.setBackground(RIGA_PARI);
