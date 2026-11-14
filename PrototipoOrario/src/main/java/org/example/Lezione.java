@@ -6,7 +6,7 @@ public class Lezione {
     private Materia materia;
     private Classe classe;
 
-    // Campi per l'orario (verranno valorizzati nello Step 2)
+    // Campi per l'orario
     private String giorno; // es. "Lunedi"
     private int ora;       // es. 1 (prima ora)
 
