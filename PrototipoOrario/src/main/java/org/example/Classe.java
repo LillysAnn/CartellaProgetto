@@ -30,14 +30,9 @@ public class Classe {
     }
 
     // Nome breve che identifica la classe (es. "5A INFO"): serve per la tabella e per i controlli di sovrapposizione
-    public String getNome() {
+    public String toString() {
         return anno + "" + sezione + " " + indirizzo;
     }
 
-    public String toString(){
-        return "Classe " + anno + " sezione " + sezione + " indirizzo " + indirizzo+ " oreSettimanali " + oreSettimanali;
-        //return "" + anno + sezione + indirizzo + oreSettimanali;
-    }
 }
 
-//14/11

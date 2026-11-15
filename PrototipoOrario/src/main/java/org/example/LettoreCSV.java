@@ -13,7 +13,7 @@ import java.util.Set;
 
 public class LettoreCSV {
 
-    private GestoreDati g = new GestoreDati();
+    private GestoreDati g;
     private int errori = 0;
     private final List<String> messaggiErrore = new ArrayList<>();
 
@@ -38,12 +38,12 @@ public class LettoreCSV {
 
     // Ritorna true se il file e' stato letto (anche con righe scartate), false se non e' stato possibile aprirlo
     public boolean leggiEValida(String filePercorso) {
-        g = new GestoreDati();
+        //g = new GestoreDati();
         errori = 0;
         messaggiErrore.clear();
         Set<String> righeViste = new HashSet<>();
 
-        try (BufferedReader br = Files.newBufferedReader(Path.of(filePercorso), StandardCharsets.UTF_8)) {
+        try (BufferedReader br = Files.newBufferedReader(Path.of(filePercorso), StandardCharsets.UTF_8)) {//apre il file
             String riga;
             int numeroRiga = 0;
 
@@ -123,7 +123,7 @@ public class LettoreCSV {
                 if (!righeViste.add(rigaNormalizzata)) {
                     segnala(numeroRiga, "record duplicato");
                     continue;
-                }
+                }//se la riga è duplicata segnala errore
 
                 // --- RIGA VALIDA: la inviamo al GestoreDati ---
                 // colonne: docente,anno,sezione,indirizzo,materia,ore
@@ -134,7 +134,8 @@ public class LettoreCSV {
                 String materia = campi[4];
                 int ore = Integer.parseInt(campi[5]);
 
-                g.aggiungiAssegnazione(docente, anno, sezione, indirizzo, materia, ore);
+                //g.aggiungiAssegnazione(docente, anno, sezione, indirizzo, materia, ore);
+                g=new GestoreDati(docente, anno, sezione, indirizzo, materia, ore);
             }
 
             System.out.println("\nControllo terminato. Errori trovati: " + errori);
@@ -146,4 +147,3 @@ public class LettoreCSV {
         }
     }
 }
-//14/11

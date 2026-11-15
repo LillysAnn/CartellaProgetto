@@ -5,10 +5,12 @@ import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import javax.swing.filechooser.FileNameExtensionFilter;
+import javax.swing.table.DefaultTableModel;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.TreeSet;
 public class EsempioGridlayout extends JFrame {
 
@@ -96,6 +98,23 @@ public class EsempioGridlayout extends JFrame {
             super.paintComponent(g);
         }
     };
+    JButton vincoli = new JButton("Vincoli") {
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            if (getModel().isPressed()) {
+                g2.setColor(PRIMARIO.darker());
+            } else if (getModel().isRollover()) {
+                g2.setColor(PRIMARIO_HOVER);
+            } else {
+                g2.setColor(PRIMARIO);
+            }
+            g2.fillRoundRect(0, 0, getWidth(), getHeight(), 18, 18);
+            g2.dispose();
+            super.paintComponent(g);
+        }
+    };
     JButton csv = new JButton("CSV") {
         @Override
         protected void paintComponent(Graphics g) {
@@ -150,7 +169,7 @@ public class EsempioGridlayout extends JFrame {
         sceltaClasse.addItem("(nessuna)");
         riga1.add(sceltaClasse);
 
-        riga1.add(Box.createHorizontalStrut(150));
+        riga1.add(Box.createHorizontalStrut(20));
 
         download.setFont(new Font("Segoe UI", Font.BOLD, 16));
         download.setForeground(Color.WHITE);
@@ -174,8 +193,17 @@ public class EsempioGridlayout extends JFrame {
         generazione.setForeground(Color.WHITE);
         generazione.setContentAreaFilled(false);
         generazione.setBorderPainted(false);
+        vincoli.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        vincoli.setPreferredSize(new Dimension(100, 38));
+        vincoli.setForeground(Color.WHITE);
+        vincoli.setContentAreaFilled(false);
+        vincoli.setBorderPainted(false);
+        vincoli.setFocusPainted(false);
+        vincoli.setOpaque(false);
 
         riga1.add(generazione);
+        riga1.add(Box.createHorizontalStrut(30));
+        riga1.add(vincoli);
         riga1.add(Box.createHorizontalStrut(30));
         riga1.add(csv);
         riga1.add(Box.createHorizontalStrut(30));
@@ -249,6 +277,13 @@ public class EsempioGridlayout extends JFrame {
             }
         });
 
+        vincoli.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                apriVincoli();
+            }
+        });
+
         generazione.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
@@ -263,7 +298,7 @@ public class EsempioGridlayout extends JFrame {
 
         caricamentoInCorso = true;
         sceltaDocente.removeAllItems();
-        for (String nome : gestore.getDocenti()) {
+        for (String nome : gestore.docentiOrdinati()) {
             sceltaDocente.addItem(nome);
         }
         sceltaClasse.removeAllItems();
@@ -279,7 +314,7 @@ public class EsempioGridlayout extends JFrame {
         mostraDocente();
 
         StringBuilder msg = new StringBuilder();
-        msg.append("Docenti: ").append(gestore.getDocenti().size());
+        msg.append("Docenti: ").append(gestore.docentiOrdinati().size());
         msg.append("\nAssegnazioni (docente-classe-materia): ").append(gestore.getNumeroAssegnazioni());
         msg.append("\nOre settimanali totali: ").append(gestore.getOreTotali());
         msg.append("\nRighe scartate: ").append(errori);
@@ -300,11 +335,11 @@ public class EsempioGridlayout extends JFrame {
             return;
         }
 
-        List<Lezione> nonCollocate = GeneratoreOrario.genera(gestore.getListaLezioni(), giorni, GIORNI_ATTIVI, ORE_ATTIVE);
+        List<Lezione> nonCollocate = GeneratoreOrario.genera(gestore.getListaLezioni(), giorni, GIORNI_ATTIVI, ORE_ATTIVE, gestore);
         aggiornaVista();
 
         // controllo indipendente: un orario che viola i vincoli non viene mai dichiarato valido
-        List<String> violazioni = GeneratoreOrario.verifica(gestore.getListaLezioni());
+        List<String> violazioni = GeneratoreOrario.verifica(gestore.getListaLezioni(), gestore, giorni);
         if (!violazioni.isEmpty()) {
             StringBuilder v = new StringBuilder("L'orario viola dei vincoli obbligatori:");
             for (int i = 0; i < violazioni.size() && i < 10; i++) {
@@ -316,8 +351,19 @@ public class EsempioGridlayout extends JFrame {
 
         int totali = gestore.getListaLezioni().size();
         if (nonCollocate.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Orario generato: tutte le " + totali + " lezioni sono state collocate.",
-                    "Generazione", JOptionPane.INFORMATION_MESSAGE);
+            StringBuilder ok = new StringBuilder("Orario generato: tutte le " + totali + " lezioni sono state collocate.");
+            List<String> prefNonRispettate = GeneratoreOrario.preferenzeNonRispettate(gestore.getListaLezioni(), gestore, giorni);
+            if (!prefNonRispettate.isEmpty()) {
+                ok.append("\n\nPreferenze non rispettate (").append(prefNonRispettate.size()).append("):");
+                for (int i = 0; i < prefNonRispettate.size() && i < 10; i++) {
+                    ok.append("\n  - ").append(prefNonRispettate.get(i));
+                }
+                if (prefNonRispettate.size() > 10) {
+                    ok.append("\n  ... e altre ").append(prefNonRispettate.size() - 10);
+                }
+            }
+            JOptionPane.showMessageDialog(this, ok.toString(), "Generazione",
+                    prefNonRispettate.isEmpty() ? JOptionPane.INFORMATION_MESSAGE : JOptionPane.WARNING_MESSAGE);
         } else {
             StringBuilder msg = new StringBuilder();
             msg.append("Collocate ").append(totali - nonCollocate.size()).append(" lezioni su ").append(totali)
@@ -325,12 +371,20 @@ public class EsempioGridlayout extends JFrame {
             for (int i = 0; i < nonCollocate.size() && i < 15; i++) {
                 Lezione l = nonCollocate.get(i);
                 msg.append("\n  - ").append(l.getDocente().getNome()).append(", ")
-                        .append(l.getClasse().getNome()).append(", ").append(l.getMateria().getNome());
+                        .append(l.getClasse().toString()).append(", ").append(l.getMateria().getNome());
             }
             if (nonCollocate.size() > 15) {
                 msg.append("\n  ... e altre ").append(nonCollocate.size() - 15);
             }
-            List<String> cause = GeneratoreOrario.controllaCapacita(gestore.getListaLezioni(), GIORNI_ATTIVI, ORE_ATTIVE);
+            List<String> cause = GeneratoreOrario.controllaCapacita(gestore.getListaLezioni(), GIORNI_ATTIVI, ORE_ATTIVE, gestore);
+            List<String> vincoliCoinvolti = GeneratoreOrario.vincoliDocentiCoinvolti(nonCollocate, gestore);
+            if (!vincoliCoinvolti.isEmpty()) {
+                msg.append("\n\nDocenti coinvolti con vincoli obbligatori (riducono gli slot disponibili):");
+                for (int i = 0; i < vincoliCoinvolti.size() && i < 10; i++) {
+                    msg.append("\n  - ").append(vincoliCoinvolti.get(i));
+                }
+                msg.append("\nPer collocarle prova a togliere qualche vincolo obbligatorio.");
+            }
             if (!cause.isEmpty()) {
                 msg.append("\n\nPossibili cause (ore richieste superiori agli slot disponibili):");
                 for (int i = 0; i < cause.size() && i < 10; i++) {
@@ -339,6 +393,108 @@ public class EsempioGridlayout extends JFrame {
             }
             JOptionPane.showMessageDialog(this, msg.toString(), "Orario incompleto", JOptionPane.WARNING_MESSAGE);
         }
+    }
+
+    // Pulsante "Vincoli": per ogni docente si imposta giorno libero e niente prima ora (OBBLIGATORI),
+    // evita ultima ora e ore compatte (PREFERENZE). I valori vengono salvati nel GestoreDati.
+    private void apriVincoli() {
+        if (gestore == null || gestore.docentiOrdinati().isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Carica prima un file CSV valido.", "Attenzione", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        final String nessuno = "(automatico)";
+        final List<String> docenti = gestore.docentiOrdinati();
+        String[] colonne = {"Docente", "Giorno libero (obbl.)", "No 1a ora 8:00 (obbl.)",
+                "Evita ultima ora 15:00 (pref.)", "Ore compatte (pref.)"};
+        final DefaultTableModel modello = new DefaultTableModel(colonne, 0) {
+            @Override
+            public Class<?> getColumnClass(int colonna) {
+                return colonna >= 2 ? Boolean.class : String.class;
+            }
+
+            @Override
+            public boolean isCellEditable(int riga, int colonna) {
+                return colonna >= 1;
+            }
+        };
+        for (String d : docenti) {
+            String libero = gestore.giornoLibero.get(d);
+            modello.addRow(new Object[]{d, libero == null ? nessuno : libero, gestore.senzaPrimaOra.contains(d),
+                    gestore.evitaUltimaOra.contains(d), gestore.oreCompatte.contains(d)});
+        }
+
+        final JTable tab = new JTable(modello);
+        tab.setRowHeight(28);
+        tab.setFont(new Font("Segoe UI", Font.PLAIN, 15));
+        tab.setForeground(TESTO);
+        tab.setGridColor(BORDO);
+        tab.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 14));
+        tab.getTableHeader().setBackground(INTESTAZIONE);
+        tab.getTableHeader().setForeground(Color.WHITE);
+        JComboBox<String> sceltaGiorno = new JComboBox<>();
+        sceltaGiorno.addItem(nessuno);
+        for (String g : giorni) {
+            sceltaGiorno.addItem(g);
+        }
+        tab.getColumnModel().getColumn(1).setCellEditor(new DefaultCellEditor(sceltaGiorno));
+
+        JLabel legenda = new JLabel("<html>OBBLIGATORI: il generatore non li viola mai; se non c'e' posto la lezione resta non collocata.<br>"
+                + "PREFERENZE: il generatore prova a rispettarle, ma se non puo' le viola e lo segnala.<br>"
+                + "Ogni docente ha comunque almeno un giorno libero: se non ne scegli uno, lo sceglie il programma.</html>");
+        legenda.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        legenda.setForeground(TESTO);
+        legenda.setBorder(BorderFactory.createEmptyBorder(10, 12, 10, 12));
+
+        final JDialog finestra = new JDialog(this, "Vincoli dei docenti", true);
+        JButton applica = new JButton("Applica");
+        JButton annulla = new JButton("Annulla");
+        applica.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                if (tab.isEditing()) {
+                    tab.getCellEditor().stopCellEditing();
+                }
+                gestore.giornoLibero.clear();
+                gestore.senzaPrimaOra.clear();
+                gestore.evitaUltimaOra.clear();
+                gestore.oreCompatte.clear();
+                for (int r = 0; r < modello.getRowCount(); r++) {
+                    String d = docenti.get(r);
+                    String libero = (String) modello.getValueAt(r, 1);
+                    if (libero != null && !libero.equals(nessuno)) {
+                        gestore.giornoLibero.put(d, libero);
+                    }
+                    if ((Boolean) modello.getValueAt(r, 2)) {
+                        gestore.senzaPrimaOra.add(d);
+                    }
+                    if ((Boolean) modello.getValueAt(r, 3)) {
+                        gestore.evitaUltimaOra.add(d);
+                    }
+                    if ((Boolean) modello.getValueAt(r, 4)) {
+                        gestore.oreCompatte.add(d);
+                    }
+                }
+                info.setText("Vincoli aggiornati: premi Generazione per applicarli");
+                finestra.dispose();
+            }
+        });
+        annulla.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                finestra.dispose();
+            }
+        });
+        JPanel pulsanti = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        pulsanti.add(annulla);
+        pulsanti.add(applica);
+
+        finestra.setLayout(new BorderLayout());
+        finestra.add(legenda, BorderLayout.NORTH);
+        finestra.add(new JScrollPane(tab), BorderLayout.CENTER);
+        finestra.add(pulsanti, BorderLayout.SOUTH);
+        finestra.setSize(900, 600);
+        finestra.setLocationRelativeTo(this);
+        finestra.setVisible(true);
     }
 
     // Mostra nella tabella l'orario del docente selezionato
@@ -363,13 +519,13 @@ public class EsempioGridlayout extends JFrame {
             if (r >= 1 && r <= 8 && c >= 1) {
                 collocate++;
                 JTextField cella = celle[r][c];
-                cella.setText(l.getClasse().getNome());
-                cella.setToolTipText(l.getMateria().getNome() + " - classe " + l.getClasse().getNome());
+                cella.setText(l.getClasse().toString());
+                cella.setToolTipText(l.getMateria().getNome() + " - classe " + l.getClasse().toString());
                 cella.setBackground(CELLA_OCCUPATA);
             }
         }
 
-        int assegnazioni = gestore.classiPerDocente.get(nome).size();
+        int assegnazioni = gestore.DocenteClassi.get(nome).size();
         String testo = nome + "  |  " + assegnazioni + " assegnazioni  |  " + totali + " ore settimanali";
         if (collocate == 0) {
             testo += "  |  premi Generazione per creare l'orario";
@@ -411,19 +567,34 @@ public class EsempioGridlayout extends JFrame {
 
         int totali = 0;
         int collocate = 0;
-        for (Lezione l : gestore.getListaLezioni()) {
-            if (!l.getClasse().getNome().equals(nome)) {
-                continue;
-            }
-            totali++;
-            int r = l.getOra();
-            int c = indiceGiorno(l.getGiorno());
-            if (r >= 1 && r <= 8 && c >= 1) {
-                collocate++;
-                JTextField cella = celle[r][c];
-                cella.setText(l.getMateria().getNome());
-                cella.setToolTipText(l.getMateria().getNome() + " - " + l.getDocente().getNome());
-                cella.setBackground(CELLA_OCCUPATA);
+        // docenti di teoria: le ore dei docenti di laboratorio sono dentro le loro e non si contano due volte
+        Map<String, String> teoria = GeneratoreOrario.docenteTeoria(gestore.getListaLezioni());
+        for (int passo = 0; passo < 2; passo++) {   // passo 0 = teoria/normali, passo 1 = laboratorio
+            for (Lezione l : gestore.getListaLezioni()) {
+                if (!l.getClasse().toString().equals(nome)) {
+                    continue;
+                }
+                String dt = teoria.get(nome + "|" + l.getMateria().getNome());
+                boolean laboratorio = dt != null && !dt.equals(l.getDocente().getNome());
+                if (laboratorio != (passo == 1)) {
+                    continue;
+                }
+                if (!laboratorio) {
+                    totali++;
+                }
+                int r = l.getOra();
+                int c = indiceGiorno(l.getGiorno());
+                if (r >= 1 && r <= 8 && c >= 1) {
+                    JTextField cella = celle[r][c];
+                    if (laboratorio) {
+                        cella.setToolTipText(cella.getToolTipText() + " + " + l.getDocente().getNome() + " (laboratorio)");
+                    } else {
+                        collocate++;
+                        cella.setText(l.getMateria().getNome());
+                        cella.setToolTipText(l.getMateria().getNome() + " - " + l.getDocente().getNome());
+                        cella.setBackground(CELLA_OCCUPATA);
+                    }
+                }
             }
         }
 
@@ -440,7 +611,7 @@ public class EsempioGridlayout extends JFrame {
     private List<String> nomiClassi() {
         TreeSet<String> nomi = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         for (Lezione l : gestore.getListaLezioni()) {
-            nomi.add(l.getClasse().getNome());
+            nomi.add(l.getClasse().toString());
         }
         return new ArrayList<>(nomi);
     }
@@ -454,14 +625,18 @@ public class EsempioGridlayout extends JFrame {
             }
         }
         for (Lezione l : gestore.getListaLezioni()) {
-            String chi = perClasse ? l.getClasse().getNome() : l.getDocente().getNome();
+            String chi = perClasse ? l.getClasse().toString() : l.getDocente().getNome();
             int r = l.getOra();
             int c = indiceGiorno(l.getGiorno());
             if (!chi.equals(nome) || r < 1 || r > ORE_ATTIVE || c < 1) {
                 continue;
             }
-            t[r - 1][c - 1] = perClasse ? l.getMateria().getNome() + " - " + l.getDocente().getNome()
-                    : l.getClasse().getNome() + " - " + l.getMateria().getNome();
+            if (perClasse && !t[r - 1][c - 1].isEmpty()) {
+                t[r - 1][c - 1] += " + " + l.getDocente().getNome();   // teoria + laboratorio nella stessa ora
+            } else {
+                t[r - 1][c - 1] = perClasse ? l.getMateria().getNome() + " - " + l.getDocente().getNome()
+                        : l.getClasse().toString() + " - " + l.getMateria().getNome();
+            }
         }
         return t;
     }
@@ -496,7 +671,7 @@ public class EsempioGridlayout extends JFrame {
 
         List<String> titoli = new ArrayList<>();
         List<String[][]> tabelle = new ArrayList<>();
-        for (String d : gestore.getDocenti()) {
+        for (String d : gestore.docentiOrdinati()) {
             titoli.add("Docente: " + d);
             tabelle.add(tabellaPerPdf(d, false));
         }

@@ -1,5 +1,5 @@
 package org.example;
-
+//CLASSE INUTILE
 public class Assegnazione {
     private Docente docente;
     private Materia materia;
@@ -22,4 +22,4 @@ public class Assegnazione {
     public int getOreSettimanali() {
         return oreSettimanali; }
 }
-//14/11
+
