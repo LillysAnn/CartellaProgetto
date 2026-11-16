@@ -281,10 +281,7 @@ public class GeneratoreOrario {
         return nonCollocate;
     }
 
-    /**
-     * Per ogni coppia "classe|materia" con piu' docenti ritorna il docente di teoria (quello con piu' ore,
-     * o il primo comparso nel CSV a parita' di ore). Gli altri sono in compresenza di laboratorio.
-     */
+
     public static Map<String, String> docenteTeoria(List<Lezione> lezioni) {
         Map<String, Map<String, Integer>> ore = new HashMap<>();
         for (Lezione l : lezioni) {
@@ -454,7 +451,7 @@ public class GeneratoreOrario {
         return false;
     }
 
-    // Ore vuote tra la prima e l'ultima lezione del giorno (la pausa 13-14 non e' un'ora buca)
+    // Ore vuote tra la prima e l'ultima lezione del giorno
     private static int buchi(boolean[] occ, int giorno, int oreGiornaliere) {
         int prima = -1;
         int ultima = -1;
@@ -478,11 +475,6 @@ public class GeneratoreOrario {
         return b;
     }
 
-    // ------------------------------------------------------------------------------------
-    // Controlli
-    // ------------------------------------------------------------------------------------
-
-    /** Verifica che nessun vincolo obbligatorio sia stato violato. */
     public static List<String> verifica(List<Lezione> lezioni, GestoreDati vincoli, String[] nomiGiorni) {
         List<String> errori = new ArrayList<>();
         Map<String, Set<String>> giorniDocente = new TreeMap<>();
@@ -537,7 +529,6 @@ public class GeneratoreOrario {
         return errori;
     }
 
-    /** Preferenze dei docenti che l'orario generato non ha potuto rispettare. */
     public static List<String> preferenzeNonRispettate(List<Lezione> lezioni, GestoreDati vincoli, String[] nomiGiorni) {
         List<String> report = new ArrayList<>();
         if (vincoli == null) {
@@ -588,7 +579,6 @@ public class GeneratoreOrario {
         return report;
     }
 
-    /** Elenca i docenti con lezioni non collocate che hanno vincoli obbligatori attivi. */
     public static List<String> vincoliDocentiCoinvolti(List<Lezione> nonCollocate, GestoreDati vincoli) {
         List<String> righe = new ArrayList<>();
         if (vincoli == null) {
@@ -609,7 +599,6 @@ public class GeneratoreOrario {
         return righe;
     }
 
-    /** Segnala docenti o classi con ore richieste superiori agli slot disponibili. */
     public static List<String> controllaCapacita(List<Lezione> lezioni, int numGiorni, int oreGiornaliere,
                                                  GestoreDati vincoli) {
         List<String> avvisi = new ArrayList<>();
@@ -644,10 +633,6 @@ public class GeneratoreOrario {
         }
         return avvisi;
     }
-
-    // ------------------------------------------------------------------------------------
-    // Esportazione CSV
-    // ------------------------------------------------------------------------------------
 
     public static void esportaCsv(Path file, List<String> titoli, List<String[][]> tabelle, String[] nomiGiorni)
             throws IOException {
@@ -692,10 +677,6 @@ public class GeneratoreOrario {
         }
         return s;
     }
-
-    // ------------------------------------------------------------------------------------
-    // Esportazione PDF
-    // ------------------------------------------------------------------------------------
 
     private static final Charset WIN = Charset.forName("windows-1252");
     private static final double PDF_W = 842;
