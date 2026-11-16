@@ -38,7 +38,7 @@ public class LettoreCSV {
 
     // Ritorna true se il file e' stato letto (anche con righe scartate), false se non e' stato possibile aprirlo
     public boolean leggiEValida(String filePercorso) {
-        //g = new GestoreDati();
+        g = new GestoreDati();
         errori = 0;
         messaggiErrore.clear();
         Set<String> righeViste = new HashSet<>();
@@ -125,8 +125,6 @@ public class LettoreCSV {
                     continue;
                 }//se la riga è duplicata segnala errore
 
-                // --- RIGA VALIDA: la inviamo al GestoreDati ---
-                // colonne: docente,anno,sezione,indirizzo,materia,ore
                 String docente = campi[0];
                 int anno = Integer.parseInt(campi[1]);
                 char sezione = campi[2].charAt(0);
@@ -134,8 +132,7 @@ public class LettoreCSV {
                 String materia = campi[4];
                 int ore = Integer.parseInt(campi[5]);
 
-                //g.aggiungiAssegnazione(docente, anno, sezione, indirizzo, materia, ore);
-                g=new GestoreDati(docente, anno, sezione, indirizzo, materia, ore);
+                g.aggiungiAssegnazione(docente, anno, sezione, indirizzo, materia, ore);
             }
 
             System.out.println("\nControllo terminato. Errori trovati: " + errori);

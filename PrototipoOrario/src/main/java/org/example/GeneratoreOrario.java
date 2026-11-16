@@ -4,6 +4,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -16,88 +17,43 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
-import java.util.TreeSet;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
-/**
- * Generatore dell'orario (Step 2/3/6).
- *
- * Struttura della giornata (le "ore" sono numerate 1..8 come le righe della griglia grafica):
- *   ore 1-5  = 8-13   mattina
- *   ora 6    = 13-14  PAUSA: non e' mai assegnabile
- *   ore 7-8  = 14-16  pomeriggio
- *
- * Vincoli obbligatori (hard):
- *  - un docente non puo' avere due lezioni nello stesso slot
- *  - una classe non puo' avere due lezioni nello stesso slot
- *  - la pausa (ora 6) resta sempre vuota
- *  - al pomeriggio un docente ha al massimo MAX_ORE_POMERIGGIO_GIORNO ore al giorno
- *  - ogni docente ha almeno un giorno senza lezioni (quello scelto da lui, oppure uno scelto dal programma)
- *
- * Preferenze (soft, pesate nel costo di ogni slot): meglio la mattina, niente ore buche
- * per docente e classe, stessa materia della stessa classe su giorni diversi, pochi giorni
- * di servizio per ogni docente.
- *
- * Vincoli dei docenti (Step 5), letti da GestoreDati:
- *  - giorno libero (OBBLIGATORIO): nessuna lezione in quel giorno
- *  - niente prima ora (OBBLIGATORIO): nessuna lezione alle 8:00
- *  - evita ultima ora (PREFERENZA): si evita l'8a ora (15:00-16:00), ma la si usa se non ci sono alternative
- *  - ore compatte (PREFERENZA): le ore buche del docente pesano di piu' nella scelta dello slot
- *
- * Compresenza teoria/laboratorio: se la stessa classe ha la stessa materia con due (o piu') docenti
- * e uno ha piu' ore degli altri, quello e' il docente di teoria e gli altri sono di laboratorio:
- * le ore di laboratorio non si sommano, ma si svolgono DENTRO le ore del docente di teoria
- * (6 ore teoria + 4 ore laboratorio = 6 ore per la classe, 4 delle quali con due docenti).
- * Se le ore sono uguali (es. 2 e 2) le lezioni si uniscono lo stesso: come "teoria" si considera
- * il primo docente comparso nel CSV, l'altro e' in compresenza con lui.
- *
- * Fa piu' tentativi e tiene il migliore (quello con meno lezioni non collocate).
- */
 public class GeneratoreOrario {
 
     public static final int ORA_PAUSA = 6;
     public static final int PRIMA_ORA_POMERIGGIO = 7;
-    public static final int ULTIMA_ORA = 8;
+    public static final int ULTIMA_ORA = 5;
+    public static final int MAX_ORE_GIORNATA = 8;
     public static final int MAX_ORE_POMERIGGIO_GIORNO = 2;
-    // limite settimanale di ore pomeridiane per docente (MAX_VALUE = nessun limite)
-    public static final int MAX_ORE_POMERIGGIO_SETTIMANA = Integer.MAX_VALUE;///vVDERE SE  TOGLIERE
+    public static final int MAX_ORE_GIORNO_DOCENTE = 5;
 
-    // pesi delle preferenze (piu' alto = piu' importante)
-    private static final double PESO_BUCHI_DOCENTE = 10;        // per tutti i docenti
-    private static final double PESO_BUCHI_PREFERENZA = 40;     // docenti con "ore compatte"
-    private static final double PESO_ULTIMA_ORA = 60;           // docenti con "evita ultima ora"
-
-    private static final double PESO_GIORNO_POMERIGGIO = 30;    // ogni pomeriggio di servizio di un docente
-    private static final double PESO_ORA_POMERIGGIO = 3;
-    private static final double PESO_GIORNO_SERVIZIO = 8;        // ogni giorno di servizio di un docente
+    // Pesi delle preferenze (piu' alto = piu' importante)
+    private static final double PESO_BUCHI_BASE = 10;
+    private static final double PESO_BUCHI_PREFERENZA = 40;
+    private static final double PESO_BUCHI_CLASSE = 25;
+    private static final double PESO_BUCHI_CLASSE_FINALE = 120;
+    private static final double PESO_INGRESSO_RITARDATO_CLASSE = 80;
+    private static final double PESO_ULTIMA_ORA = 60;
+    private static final double PESO_GIORNO_POMERIGGIO = 30;
+    private static final double PESO_STESSA_MATERIA_GIORNO = 40;
 
     private static final int TENTATIVI = 200;
     private static final long TEMPO_MAX_MS = 8000;
-    // dopo il primo orario completo si continua a cercare per un po': si tiene quello con meno preferenze violate
     private static final long TEMPO_OTTIMIZZAZIONE_MS = 2500;
 
-    /**
-     * @param nomiGiorni     nomi dei giorni (es. "Lunedi", ...), se ne usano i primi numGiorni
-     * @param numGiorni      giorni di lezione
-     * @param oreGiornaliere righe della giornata (8: 8-13, pausa 13-14, 14-16)
-     * @return le lezioni che non e' stato possibile collocare (lista vuota = orario completo)
-     */
-    public static List<Lezione> genera(List<Lezione> lezioni, String[] nomiGiorni, int numGiorni, int oreGiornaliere) {
-        return genera(lezioni, nomiGiorni, numGiorni, oreGiornaliere, null);
-    }
-
-    /** Come sopra, con i vincoli dei docenti (giorno libero, niente prima ora, ultima ora, ore compatte). */
     public static List<Lezione> genera(List<Lezione> lezioni, String[] nomiGiorni, int numGiorni, int oreGiornaliere, GestoreDati vincoli) {
         int n = lezioni.size();
         int slot = numGiorni * oreGiornaliere;
 
-        // Numero progressivo per ogni docente, classe e "gruppo" (docente+classe+materia)
         HashMap<String, Integer> idDocenti = new HashMap<>();
         HashMap<String, Integer> idClassi = new HashMap<>();
         HashMap<String, Integer> idGruppi = new HashMap<>();
         List<List<Integer>> lezioniDelGruppo = new ArrayList<>();
         List<Integer> docenteDelGruppo = new ArrayList<>();
         List<Integer> classeDelGruppo = new ArrayList<>();
+
         for (int i = 0; i < n; i++) {
             Lezione l = lezioni.get(i);
             int d = idDocenti.computeIfAbsent(l.getDocente().getNome(), k -> idDocenti.size());
@@ -114,14 +70,35 @@ public class GeneratoreOrario {
             lezioniDelGruppo.get(g).add(i);
         }
 
-        // Compresenze: per ogni gruppo di teoria, i gruppi di laboratorio che si svolgono insieme a lui
+        int nDoc = idDocenti.size();
+        int nCla = idClassi.size();
+        int nGruppi = idGruppi.size();
+
+        // Limite ore giornaliere per docente (normalmente 5, si adatta solo se un docente ha > 25 ore)
+        int[] oreTotaliDocente = new int[nDoc];
+        for (int g = 0; g < nGruppi; g++) {
+            oreTotaliDocente[docenteDelGruppo.get(g)] += lezioniDelGruppo.get(g).size();
+        }
+        int[] maxOreGiornoDoc = new int[nDoc];
+        int giorniAttiviMinimi = Math.max(1, numGiorni - 1);
+        for (int d = 0; d < nDoc; d++) {
+            maxOreGiornoDoc[d] = Math.max(MAX_ORE_GIORNO_DOCENTE, (int) Math.ceil((double) oreTotaliDocente[d] / giorniAttiviMinimi));
+        }
+
+        // Massimo ore nello stesso giorno per lo stesso gruppo materia-classe (normalmente 2)
+        int[] maxOreGiornoGruppo = new int[nGruppi];
+        for (int g = 0; g < nGruppi; g++) {
+            maxOreGiornoGruppo[g] = Math.max(2, (int) Math.ceil((double) lezioniDelGruppo.get(g).size() / giorniAttiviMinimi));
+        }
+
+        // Compresenze teoria/laboratorio
         Map<String, String> teoria = docenteTeoria(lezioni);
         List<List<Integer>> compagni = new ArrayList<>();
-        for (int g = 0; g < idGruppi.size(); g++) {
+        for (int g = 0; g < nGruppi; g++) {
             compagni.add(new ArrayList<>());
         }
-        boolean[] eLab = new boolean[idGruppi.size()];
-        for (int g = 0; g < idGruppi.size(); g++) {
+        boolean[] eLab = new boolean[nGruppi];
+        for (int g = 0; g < nGruppi; g++) {
             Lezione l = lezioni.get(lezioniDelGruppo.get(g).get(0));
             String dt = teoria.get(l.getClasse().toString() + "|" + l.getMateria().getNome());
             if (dt != null && !dt.equals(l.getDocente().getNome())) {
@@ -130,11 +107,8 @@ public class GeneratoreOrario {
                 eLab[g] = true;
             }
         }
-        int nDoc = idDocenti.size();
-        int nCla = idClassi.size();
-        int nGruppi = idGruppi.size();
 
-        // Vincoli dei docenti: bloccato[d][slot] = slot vietato (obbligatorio); le preferenze pesano nel costo
+        // Vincoli dei docenti
         boolean[][] bloccato = new boolean[nDoc][slot];
         boolean[] evitaUltima = new boolean[nDoc];
         boolean[] compatte = new boolean[nDoc];
@@ -164,15 +138,14 @@ public class GeneratoreOrario {
         int minimoNonCollocate = Integer.MAX_VALUE;
         double minimaPenalita = Double.MAX_VALUE;
         long fine = System.currentTimeMillis() + TEMPO_MAX_MS;
-        long fineOttimizzazione = Long.MAX_VALUE;   // si fissa quando si trova il primo orario completo
+        long fineOttimizzazione = Long.MAX_VALUE;
 
         for (int t = 0; t < TENTATIVI && (t == 0 || System.currentTimeMillis() < fine)
                 && System.currentTimeMillis() < fineOttimizzazione; t++) {
             boolean[][] docenteOccupato = new boolean[nDoc][slot];
             boolean[][] classeOccupata = new boolean[nCla][slot];
             int[][] pomGiorno = new int[nDoc][numGiorni];
-            int[][] lezioniGiorno = new int[nDoc][numGiorni];     // lezioni di ogni docente in ogni giorno
-            int[] pomSettimana = new int[nDoc];
+            int[][] lezioniGiorno = new int[nDoc][numGiorni];
             int[][] gruppoGiorno = new int[nGruppi][numGiorni];
             int[] rimaste = new int[nGruppi];
             int[] posizione = new int[n];
@@ -184,18 +157,19 @@ public class GeneratoreOrario {
             }
 
             while (daFare > 0) {
-                // 1. si sceglie il gruppo piu' vincolato (meno slot ammessi); a parita' a caso
+                // 1. Scelta del gruppo piu' vincolato (meno slot ammessi)
                 int scelto = -1;
                 int minOpzioni = Integer.MAX_VALUE;
                 int pari = 0;
                 for (int g = 0; g < nGruppi; g++) {
-                    if (rimaste[g] == 0 || eLab[g]) {      // il laboratorio si colloca insieme alla teoria
+                    if (rimaste[g] == 0 || eLab[g]) {
                         continue;
                     }
                     int opzioni = 0;
                     for (int s = 0; s < slot; s++) {
                         if (slotOk(g, s, oreGiornaliere, docenteDelGruppo, classeDelGruppo, compagni, rimaste,
-                                docenteOccupato, bloccato, classeOccupata, lezioniGiorno, pomGiorno, pomSettimana)) {
+                                docenteOccupato, bloccato, classeOccupata, lezioniGiorno, pomGiorno,
+                                maxOreGiornoDoc, gruppoGiorno, maxOreGiornoGruppo)) {
                             opzioni++;
                         }
                     }
@@ -208,12 +182,11 @@ public class GeneratoreOrario {
                     }
                 }
 
-                // nessuno slot ammesso: le lezioni rimaste di questo gruppo restano non collocate
                 if (minOpzioni == 0) {
                     nonCollocate += rimaste[scelto];
                     daFare -= rimaste[scelto];
                     rimaste[scelto] = 0;
-                    for (int h : compagni.get(scelto)) {      // anche il laboratorio collegato resta da collocare
+                    for (int h : compagni.get(scelto)) {
                         nonCollocate += rimaste[h];
                         daFare -= rimaste[h];
                         rimaste[h] = 0;
@@ -221,26 +194,26 @@ public class GeneratoreOrario {
                     continue;
                 }
 
-                // 2. si sceglie lo slot ammesso con il costo piu' basso
+                // 2. Scelta dello slot ammesso con costo minore
                 int d = docenteDelGruppo.get(scelto);
                 int c = classeDelGruppo.get(scelto);
                 int migliorSlot = -1;
                 double migliorCosto = Double.MAX_VALUE;
                 for (int s = 0; s < slot; s++) {
                     if (!slotOk(scelto, s, oreGiornaliere, docenteDelGruppo, classeDelGruppo, compagni, rimaste,
-                            docenteOccupato, bloccato, classeOccupata, lezioniGiorno, pomGiorno, pomSettimana)) {
+                            docenteOccupato, bloccato, classeOccupata, lezioniGiorno, pomGiorno,
+                            maxOreGiornoDoc, gruppoGiorno, maxOreGiornoGruppo)) {
                         continue;
                     }
-                    double costo = costo(docenteOccupato[d], classeOccupata[c], pomGiorno[d], s, oreGiornaliere,
+                    double costo = costoSlot(docenteOccupato[d], classeOccupata[c], pomGiorno[d], s, oreGiornaliere,
                             gruppoGiorno[scelto][s / oreGiornaliere], compatte[d], evitaUltima[d], random);
-                    // anche il docente di laboratorio che entra in compresenza deve avere pomeriggi ordinati
+
                     for (int h : compagni.get(scelto)) {
                         int dh = docenteDelGruppo.get(h);
-                        if (rimaste[h] > 0 && ammessoDocente(docenteOccupato[dh], bloccato[dh], lezioniGiorno[dh], pomGiorno[dh], pomSettimana[dh], s, oreGiornaliere)) {
-                            costo += costoPomeriggio(pomGiorno[dh], s / oreGiornaliere, s % oreGiornaliere + 1);
-                            if (evitaUltima[dh] && s % oreGiornaliere + 1 == ULTIMA_ORA) {
-                                costo += PESO_ULTIMA_ORA;
-                            }
+                        if (rimaste[h] > 0 && ammessoDocente(docenteOccupato[dh], bloccato[dh], lezioniGiorno[dh],
+                                pomGiorno[dh], maxOreGiornoDoc[dh], s, oreGiornaliere)) {
+                            costo += costoDocenteSlot(docenteOccupato[dh], pomGiorno[dh], s, oreGiornaliere,
+                                    compatte[dh], evitaUltima[dh]);
                         }
                     }
                     if (costo < migliorCosto) {
@@ -249,7 +222,7 @@ public class GeneratoreOrario {
                     }
                 }
 
-                // 3. si colloca la lezione
+                // 3. Collocazione della lezione (e dell'eventuale compresenza)
                 int giorno = migliorSlot / oreGiornaliere;
                 int ora = migliorSlot % oreGiornaliere + 1;
                 int k = lezioniDelGruppo.get(scelto).size() - rimaste[scelto];
@@ -260,22 +233,20 @@ public class GeneratoreOrario {
                 gruppoGiorno[scelto][giorno]++;
                 if (ora >= PRIMA_ORA_POMERIGGIO) {
                     pomGiorno[d][giorno]++;
-                    pomSettimana[d]++;
                 }
                 rimaste[scelto]--;
                 daFare--;
 
-                // compresenza: il docente di laboratorio entra nella stessa ora (se e' libero)
                 for (int h : compagni.get(scelto)) {
                     int dh = docenteDelGruppo.get(h);
-                    if (rimaste[h] > 0 && ammessoDocente(docenteOccupato[dh], bloccato[dh], lezioniGiorno[dh], pomGiorno[dh], pomSettimana[dh], migliorSlot, oreGiornaliere)) {
+                    if (rimaste[h] > 0 && ammessoDocente(docenteOccupato[dh], bloccato[dh], lezioniGiorno[dh],
+                            pomGiorno[dh], maxOreGiornoDoc[dh], migliorSlot, oreGiornaliere)) {
                         int kh = lezioniDelGruppo.get(h).size() - rimaste[h];
                         posizione[lezioniDelGruppo.get(h).get(kh)] = migliorSlot;
                         docenteOccupato[dh][migliorSlot] = true;
                         lezioniGiorno[dh][giorno]++;
                         if (ora >= PRIMA_ORA_POMERIGGIO) {
                             pomGiorno[dh][giorno]++;
-                            pomSettimana[dh]++;
                         }
                         rimaste[h]--;
                         daFare--;
@@ -283,25 +254,8 @@ public class GeneratoreOrario {
                 }
             }
 
-            // penalita' = quanto questo orario viola le preferenze (ore buche, ultima ora, pomeriggi, giorni di servizio)
-            double penalita = 0;
-            for (int d = 0; d < nDoc; d++) {
-                int giorniPomeriggio = 0;
-                for (int gi = 0; gi < numGiorni; gi++) {
-                    penalita += (compatte[d] ? PESO_BUCHI_PREFERENZA : PESO_BUCHI_DOCENTE) * buchi(docenteOccupato[d], gi, oreGiornaliere);
-                    if (evitaUltima[d] && docenteOccupato[d][gi * oreGiornaliere + ULTIMA_ORA - 1]) {
-                        penalita += PESO_ULTIMA_ORA;
-                    }
-                    if (pomGiorno[d][gi] > 0) {
-                        giorniPomeriggio++;
-                        penalita += PESO_ORA_POMERIGGIO * pomGiorno[d][gi];
-                    }
-                    if (lezioniGiorno[d][gi] > 0) {
-                        penalita += PESO_GIORNO_SERVIZIO;
-                    }
-                }
-                penalita += PESO_GIORNO_POMERIGGIO * giorniPomeriggio;
-            }
+            double penalita = calcolaPenalita(docenteOccupato, classeOccupata, pomGiorno, gruppoGiorno,
+                    compatte, evitaUltima, numGiorni, oreGiornaliere);
             if (nonCollocate < minimoNonCollocate || (nonCollocate == minimoNonCollocate && penalita < minimaPenalita)) {
                 minimoNonCollocate = nonCollocate;
                 minimaPenalita = penalita;
@@ -312,7 +266,6 @@ public class GeneratoreOrario {
             }
         }
 
-        // Applichiamo la soluzione migliore alle lezioni
         List<Lezione> nonCollocate = new ArrayList<>();
         for (int i = 0; i < n; i++) {
             Lezione l = lezioni.get(i);
@@ -322,16 +275,15 @@ public class GeneratoreOrario {
                 nonCollocate.add(l);
             } else {
                 l.setGiorno(nomiGiorni[migliore[i] / oreGiornaliere]);
-                l.setOra(migliore[i] % oreGiornaliere + 1);   // 1 = prima ora, 6 = pausa (mai usata)
+                l.setOra(migliore[i] % oreGiornaliere + 1);
             }
         }
         return nonCollocate;
     }
 
-
     /**
-     * Per ogni coppia "classe|materia" con piu' docenti ritorna il nome del docente di teoria: quello con
-     * piu' ore (a parita' di ore il primo comparso nel CSV). Gli altri sono di laboratorio, in compresenza con lui.
+     * Per ogni coppia "classe|materia" con piu' docenti ritorna il docente di teoria (quello con piu' ore,
+     * o il primo comparso nel CSV a parita' di ore). Gli altri sono in compresenza di laboratorio.
      */
     public static Map<String, String> docenteTeoria(List<Lezione> lezioni) {
         Map<String, Map<String, Integer>> ore = new HashMap<>();
@@ -347,7 +299,7 @@ public class GeneratoreOrario {
             String migliore = null;
             int max = 0;
             for (Map.Entry<String, Integer> d : e.getValue().entrySet()) {
-                if (d.getValue() > max) {        // a parita' resta il primo comparso
+                if (d.getValue() > max) {
                     max = d.getValue();
                     migliore = d.getKey();
                 }
@@ -357,49 +309,46 @@ public class GeneratoreOrario {
         return teoria;
     }
 
-    // slot ammesso per una lezione di teoria: valgono i vincoli del docente di teoria e della classe e,
-    // se le ore di teoria rimaste sono tutte necessarie al laboratorio, anche quelli del docente di laboratorio
     private static boolean slotOk(int g, int s, int oreGiornaliere, List<Integer> docenteDelGruppo,
                                   List<Integer> classeDelGruppo, List<List<Integer>> compagni, int[] rimaste,
                                   boolean[][] docenteOccupato, boolean[][] bloccato, boolean[][] classeOccupata,
-                                  int[][] lezioniGiorno, int[][] pomGiorno, int[] pomSettimana) {
+                                  int[][] lezioniGiorno, int[][] pomGiorno, int[] maxOreGiornoDoc,
+                                  int[][] gruppoGiorno, int[] maxOreGiornoGruppo) {
+        int giorno = s / oreGiornaliere;
+        if (gruppoGiorno[g][giorno] >= maxOreGiornoGruppo[g]) {
+            return false;
+        }
         int d = docenteDelGruppo.get(g);
         int c = classeDelGruppo.get(g);
-        if (!ammesso(docenteOccupato[d], bloccato[d], classeOccupata[c], lezioniGiorno[d], pomGiorno[d], pomSettimana[d], s, oreGiornaliere)) {
+        if (classeOccupata[c][s] || !ammessoDocente(docenteOccupato[d], bloccato[d], lezioniGiorno[d],
+                pomGiorno[d], maxOreGiornoDoc[d], s, oreGiornaliere)) {
             return false;
         }
         for (int h : compagni.get(g)) {
             if (rimaste[h] == 0 || rimaste[g] > rimaste[h]) {
-                continue;     // laboratorio finito, oppure c'e' ancora margine per farlo in un altro slot
+                continue;
             }
             int dh = docenteDelGruppo.get(h);
-            if (!ammessoDocente(docenteOccupato[dh], bloccato[dh], lezioniGiorno[dh], pomGiorno[dh], pomSettimana[dh], s, oreGiornaliere)) {
+            if (!ammessoDocente(docenteOccupato[dh], bloccato[dh], lezioniGiorno[dh],
+                    pomGiorno[dh], maxOreGiornoDoc[dh], s, oreGiornaliere)) {
                 return false;
             }
         }
         return true;
     }
 
-    // vincoli obbligatori su uno slot (s = giorno * oreGiornaliere + ora - 1)
-    private static boolean ammesso(boolean[] docenteOcc, boolean[] bloccatoDocente, boolean[] classeOcc,
-                                   int[] lezioniGiornoDocente, int[] pomGiornoDocente, int pomSettimanaDocente,
-                                   int s, int oreGiornaliere) {
-        return !classeOcc[s] && ammessoDocente(docenteOcc, bloccatoDocente, lezioniGiornoDocente, pomGiornoDocente,
-                pomSettimanaDocente, s, oreGiornaliere);
-    }
-
-    // vincoli che riguardano solo il docente
     private static boolean ammessoDocente(boolean[] docenteOcc, boolean[] bloccatoDocente, int[] lezioniGiornoDocente,
-                                          int[] pomGiornoDocente, int pomSettimanaDocente, int s, int oreGiornaliere) {
+                                          int[] pomGiornoDocente, int maxOreGiorno, int s, int oreGiornaliere) {
+        int giorno = s / oreGiornaliere;
         int ora = s % oreGiornaliere + 1;
-        if (ora == ORA_PAUSA) {
+        if (ora == ORA_PAUSA || docenteOcc[s] || bloccatoDocente[s]) {
             return false;
         }
-        if (docenteOcc[s] || bloccatoDocente[s]) {      // gia' occupato, oppure giorno libero / prima ora esclusa
+        if (lezioniGiornoDocente[giorno] >= maxOreGiorno) {
             return false;
         }
-        // ogni docente deve avere almeno un giorno libero: non si puo' iniziare l'ultimo giorno ancora vuoto
-        if (lezioniGiornoDocente[s / oreGiornaliere] == 0) {
+        // Ogni docente deve mantenere almeno un giorno libero
+        if (lezioniGiornoDocente[giorno] == 0) {
             int giorniUsati = 0;
             for (int n : lezioniGiornoDocente) {
                 if (n > 0) {
@@ -410,53 +359,46 @@ public class GeneratoreOrario {
                 return false;
             }
         }
-        if (ora >= PRIMA_ORA_POMERIGGIO) {
-            if (pomGiornoDocente[s / oreGiornaliere] >= MAX_ORE_POMERIGGIO_GIORNO) {
-                return false;
-            }
-            if (pomSettimanaDocente >= MAX_ORE_POMERIGGIO_SETTIMANA) {
-                return false;
-            }
-        }
-        return true;
+        return ora < PRIMA_ORA_POMERIGGIO || pomGiornoDocente[giorno] < MAX_ORE_POMERIGGIO_GIORNO;
     }
 
-    // preferenze: costo piu' basso = slot migliore
-    private static double costo(boolean[] docenteOcc, boolean[] classeOcc, int[] pomGiornoDocente, int s, int oreGiornaliere,
-                                int stessaMateriaStessoGiorno, boolean docenteCompatto, boolean docenteEvitaUltima,
-                                Random random) {
+    private static double costoSlot(boolean[] docenteOcc, boolean[] classeOcc, int[] pomGiornoDocente, int s,
+                                    int oreGiornaliere, int stessaMateriaStessoGiorno, boolean docenteCompatto,
+                                    boolean docenteEvitaUltima, Random random) {
+        int giorno = s / oreGiornaliere;
+        double c = costoDocenteSlot(docenteOcc, pomGiornoDocente, s, oreGiornaliere, docenteCompatto, docenteEvitaUltima);
+
+        int buchiClassePrima = buchi(classeOcc, giorno, oreGiornaliere);
+        classeOcc[s] = true;
+        c += PESO_BUCHI_CLASSE * (buchi(classeOcc, giorno, oreGiornaliere) - buchiClassePrima);
+        classeOcc[s] = false;
+
+        c += PESO_STESSA_MATERIA_GIORNO * stessaMateriaStessoGiorno;
+        return c + random.nextDouble() * 6;
+    }
+
+    private static double costoDocenteSlot(boolean[] docenteOcc, int[] pomGiornoDocente, int s, int oreGiornaliere,
+                                           boolean docenteCompatto, boolean docenteEvitaUltima) {
         int giorno = s / oreGiornaliere;
         int ora = s % oreGiornaliere + 1;
-        double c = costoPomeriggio(pomGiornoDocente, giorno, ora);
+        double c = costoPomeriggio(docenteOcc, pomGiornoDocente, giorno, ora, oreGiornaliere);
         if (docenteEvitaUltima && ora == ULTIMA_ORA) {
-            c += PESO_ULTIMA_ORA;                       // preferenza: non finire alle 16
+            c += PESO_ULTIMA_ORA;
         }
-        int buchiDocente = buchi(docenteOcc, giorno, oreGiornaliere);
-        int buchiClasse = buchi(classeOcc, giorno, oreGiornaliere);
-        boolean giornoNuovo = !haLezioni(docenteOcc, giorno, oreGiornaliere);
+        int buchiPrima = buchi(docenteOcc, giorno, oreGiornaliere);
         docenteOcc[s] = true;
-        classeOcc[s] = true;
-        double pesoBuchi = docenteCompatto ? PESO_BUCHI_PREFERENZA : PESO_BUCHI_DOCENTE;
-        c += pesoBuchi * (buchi(docenteOcc, giorno, oreGiornaliere) - buchiDocente);   // ore buche del docente
-        c += 15.0 * (buchi(classeOcc, giorno, oreGiornaliere) - buchiClasse);     // ore buche della classe
+        double pesoBuchi = docenteCompatto ? PESO_BUCHI_PREFERENZA : PESO_BUCHI_BASE;
+        c += pesoBuchi * (buchi(docenteOcc, giorno, oreGiornaliere) - buchiPrima);
         docenteOcc[s] = false;
-        classeOcc[s] = false;
-        if (giornoNuovo) {
-            c += 8;                                     // meno giorni di servizio
-        }
-        c += 40.0 * stessaMateriaStessoGiorno;          // distribuzione settimanale della materia
-        return c + random.nextDouble() * 6;             // un po' di casualita' tra i tentativi
+        return c;
     }
 
-    // Pomeriggi: meglio la mattina; se un docente deve fare il pomeriggio, meglio tutte le sue ore pomeridiane
-    // nello stesso giorno (nessun costo se ha gia' un'ora al pomeriggio quel giorno) e in pochi pomeriggi
-    // (ogni pomeriggio in piu' costa di piu': tipicamente 1-2 pomeriggi a settimana per docente)
-    private static double costoPomeriggio(int[] pomGiornoDocente, int giorno, int ora) {
+    private static double costoPomeriggio(boolean[] docenteOcc, int[] pomGiornoDocente, int giorno, int ora, int oreGiornaliere) {
         if (ora < PRIMA_ORA_POMERIGGIO) {
             return 0;
         }
         if (pomGiornoDocente[giorno] > 0) {
-            return 0;                                   // stesso pomeriggio: ore vicine
+            return 0;
         }
         int giorniConPomeriggio = 0;
         for (int p : pomGiornoDocente) {
@@ -464,7 +406,43 @@ public class GeneratoreOrario {
                 giorniConPomeriggio++;
             }
         }
-        return 30 + 40.0 * giorniConPomeriggio;         // nuovo pomeriggio: il secondo costa 70, il terzo 110...
+        double bucoPostPausa = (ora > PRIMA_ORA_POMERIGGIO && !docenteOcc[giorno * oreGiornaliere + PRIMA_ORA_POMERIGGIO - 1]) ? 35 : 0;
+        return PESO_GIORNO_POMERIGGIO + 40.0 * giorniConPomeriggio + bucoPostPausa;
+    }
+
+    private static double calcolaPenalita(boolean[][] docenteOccupato, boolean[][] classeOccupata, int[][] pomGiorno,
+                                          int[][] gruppoGiorno, boolean[] compatte, boolean[] evitaUltima,
+                                          int numGiorni, int oreGiornaliere) {
+        double penalita = 0;
+        for (int d = 0; d < docenteOccupato.length; d++) {
+            int giorniPomeriggio = 0;
+            for (int gi = 0; gi < numGiorni; gi++) {
+                penalita += (compatte[d] ? PESO_BUCHI_PREFERENZA : PESO_BUCHI_BASE) * buchi(docenteOccupato[d], gi, oreGiornaliere);
+                if (evitaUltima[d] && docenteOccupato[d][gi * oreGiornaliere + ULTIMA_ORA - 1]) {
+                    penalita += PESO_ULTIMA_ORA;
+                }
+                if (pomGiorno[d][gi] > 0) {
+                    giorniPomeriggio++;
+                }
+            }
+            penalita += PESO_GIORNO_POMERIGGIO * giorniPomeriggio;
+        }
+        for (int c = 0; c < classeOccupata.length; c++) {
+            for (int gi = 0; gi < numGiorni; gi++) {
+                penalita += PESO_BUCHI_CLASSE_FINALE * buchi(classeOccupata[c], gi, oreGiornaliere);
+                if (!classeOccupata[c][gi * oreGiornaliere] && haLezioni(classeOccupata[c], gi, oreGiornaliere)) {
+                    penalita += PESO_INGRESSO_RITARDATO_CLASSE;
+                }
+            }
+        }
+        for (int[] gg : gruppoGiorno) {
+            for (int gi = 0; gi < numGiorni; gi++) {
+                if (gg[gi] > 1) {
+                    penalita += PESO_STESSA_MATERIA_GIORNO * (gg[gi] - 1);
+                }
+            }
+        }
+        return penalita;
     }
 
     private static boolean haLezioni(boolean[] occ, int giorno, int oreGiornaliere) {
@@ -476,7 +454,7 @@ public class GeneratoreOrario {
         return false;
     }
 
-    // ore vuote tra la prima e l'ultima lezione del giorno (la pausa 13-14 non e' un'ora buca)
+    // Ore vuote tra la prima e l'ultima lezione del giorno (la pausa 13-14 non e' un'ora buca)
     private static int buchi(boolean[] occ, int giorno, int oreGiornaliere) {
         int prima = -1;
         int ultima = -1;
@@ -504,25 +482,15 @@ public class GeneratoreOrario {
     // Controlli
     // ------------------------------------------------------------------------------------
 
-    /** Controllo indipendente dell'orario prodotto: lista vuota = nessun vincolo obbligatorio violato. */
-    public static List<String> verifica(List<Lezione> lezioni) {
-        return verifica(lezioni, null);
-    }
-
-    /** Come sopra, controllando anche i vincoli obbligatori dei docenti (giorno libero, niente prima ora). */
-    public static List<String> verifica(List<Lezione> lezioni, GestoreDati vincoli) {
-        return verifica(lezioni, vincoli, null);
-    }
-
-    /** Come sopra; con i nomi dei giorni controlla anche che ogni docente abbia almeno un giorno libero. */
+    /** Verifica che nessun vincolo obbligatorio sia stato violato. */
     public static List<String> verifica(List<Lezione> lezioni, GestoreDati vincoli, String[] nomiGiorni) {
         List<String> errori = new ArrayList<>();
         Map<String, Set<String>> giorniDocente = new TreeMap<>();
         Map<String, Lezione> docenteSlot = new HashMap<>();
         Map<String, Lezione> classeSlot = new HashMap<>();
         Map<String, Integer> pomGiorno = new HashMap<>();
-        Map<String, Integer> pomSettimana = new HashMap<>();
         Map<String, String> teoria = docenteTeoria(lezioni);
+
         for (Lezione l : lezioni) {
             if (l.getGiorno() == null) {
                 continue;
@@ -546,7 +514,6 @@ public class GeneratoreOrario {
                 errori.add("Docente " + l.getDocente().getNome() + " ha due lezioni insieme (" + quando + ")");
             }
             altra = classeSlot.put(l.getClasse().toString() + "|" + quando, l);
-            // due lezioni insieme nella stessa classe sono ammesse solo se sono teoria + laboratorio della stessa materia
             boolean compresenza = altra != null && altra.getMateria().getNome().equals(l.getMateria().getNome())
                     && teoria.containsKey(l.getClasse().toString() + "|" + l.getMateria().getNome());
             if (altra != null && !compresenza) {
@@ -557,10 +524,6 @@ public class GeneratoreOrario {
                 if (g == MAX_ORE_POMERIGGIO_GIORNO + 1) {
                     errori.add("Docente " + l.getDocente().getNome() + " ha piu' di " + MAX_ORE_POMERIGGIO_GIORNO
                             + " ore al pomeriggio di " + l.getGiorno());
-                }
-                int w = pomSettimana.merge(l.getDocente().getNome(), 1, Integer::sum);
-                if (w == MAX_ORE_POMERIGGIO_SETTIMANA + 1) {
-                    errori.add("Docente " + l.getDocente().getNome() + " supera il limite settimanale di ore al pomeriggio");
                 }
             }
         }
@@ -574,67 +537,50 @@ public class GeneratoreOrario {
         return errori;
     }
 
-    /** Preferenze dei docenti che l'orario generato non ha potuto rispettare, con una motivazione sintetica. */
+    /** Preferenze dei docenti che l'orario generato non ha potuto rispettare. */
     public static List<String> preferenzeNonRispettate(List<Lezione> lezioni, GestoreDati vincoli, String[] nomiGiorni) {
         List<String> report = new ArrayList<>();
         if (vincoli == null) {
             return report;
         }
-        // occupazione di ogni docente: nome -> giorno -> ora (1..8)
-        Map<String, Map<String, boolean[]>> occ = new TreeMap<>();
-        for (Lezione l : lezioni) {
-            if (l.getGiorno() == null) {
-                continue;
-            }
-            occ.computeIfAbsent(l.getDocente().getNome(), k -> new HashMap<>())
-                    .computeIfAbsent(l.getGiorno(), k -> new boolean[ULTIMA_ORA + 1])[l.getOra()] = true;
+        Map<String, Integer> indiceGiorno = new HashMap<>();
+        for (int i = 0; i < nomiGiorni.length; i++) {
+            indiceGiorno.put(nomiGiorni[i], i);
         }
-        for (Map.Entry<String, Map<String, boolean[]>> e : occ.entrySet()) {
+        Map<String, boolean[]> occ = new TreeMap<>();
+        for (Lezione l : lezioni) {
+            Integer gi = l.getGiorno() == null ? null : indiceGiorno.get(l.getGiorno());
+            if (gi != null && l.getOra() >= 1 && l.getOra() <= MAX_ORE_GIORNATA) {
+                occ.computeIfAbsent(l.getDocente().getNome(), k -> new boolean[nomiGiorni.length * MAX_ORE_GIORNATA])[gi * MAX_ORE_GIORNATA + l.getOra() - 1] = true;
+            }
+        }
+        for (Map.Entry<String, boolean[]> e : occ.entrySet()) {
             String docente = e.getKey();
+            boolean[] o = e.getValue();
             if (vincoli.evitaUltimaOra.contains(docente)) {
                 StringBuilder giorni = new StringBuilder();
-                for (String g : nomiGiorni) {
-                    boolean[] o = e.getValue().get(g);
-                    if (o != null && o[ULTIMA_ORA]) {
-                        giorni.append(giorni.length() > 0 ? ", " : "").append(g);
+                for (int gi = 0; gi < nomiGiorni.length; gi++) {
+                    if (o[gi * MAX_ORE_GIORNATA + ULTIMA_ORA - 1]) {
+                        giorni.append(giorni.length() > 0 ? ", " : "").append(nomiGiorni[gi]);
                     }
                 }
                 if (giorni.length() > 0) {
-                    report.add("Docente " + docente + ": preferiva non fare l'ultima ora (15:00) ma l'ha in " + giorni
+                    report.add("Docente " + docente + ": preferiva non fare l'ultima ora (12:00) ma l'ha in " + giorni
                             + " (nessuno slot alternativo libero compatibile con gli altri vincoli)");
                 }
             }
             if (vincoli.oreCompatte.contains(docente)) {
-                StringBuilder buchi = new StringBuilder();
+                StringBuilder dettaglioBuchi = new StringBuilder();
                 int totale = 0;
-                for (String g : nomiGiorni) {
-                    boolean[] o = e.getValue().get(g);
-                    if (o == null) {
-                        continue;
-                    }
-                    int prima = -1;
-                    int ultima = -1;
-                    for (int ora = 1; ora <= ULTIMA_ORA; ora++) {
-                        if (o[ora]) {
-                            if (prima < 0) {
-                                prima = ora;
-                            }
-                            ultima = ora;
-                        }
-                    }
-                    int b = 0;
-                    for (int ora = prima; prima > 0 && ora <= ultima; ora++) {
-                        if (ora != ORA_PAUSA && !o[ora]) {
-                            b++;
-                        }
-                    }
+                for (int gi = 0; gi < nomiGiorni.length; gi++) {
+                    int b = buchi(o, gi, MAX_ORE_GIORNATA);
                     if (b > 0) {
                         totale += b;
-                        buchi.append(buchi.length() > 0 ? ", " : "").append(g).append(": ").append(b);
+                        dettaglioBuchi.append(dettaglioBuchi.length() > 0 ? ", " : "").append(nomiGiorni[gi]).append(": ").append(b);
                     }
                 }
                 if (totale > 0) {
-                    report.add("Docente " + docente + ": preferiva ore compatte ma ha " + totale + " ore buche (" + buchi
+                    report.add("Docente " + docente + ": preferiva ore compatte ma ha " + totale + " ore buche (" + dettaglioBuchi
                             + "); non c'era un'alternativa migliore con gli altri vincoli");
                 }
             }
@@ -642,7 +588,7 @@ public class GeneratoreOrario {
         return report;
     }
 
-    /** Per le lezioni non collocate: quali docenti coinvolti hanno vincoli obbligatori che riducono i loro slot. */
+    /** Elenca i docenti con lezioni non collocate che hanno vincoli obbligatori attivi. */
     public static List<String> vincoliDocentiCoinvolti(List<Lezione> nonCollocate, GestoreDati vincoli) {
         List<String> righe = new ArrayList<>();
         if (vincoli == null) {
@@ -663,12 +609,7 @@ public class GeneratoreOrario {
         return righe;
     }
 
-    /** Spiega in anticipo perche' un orario completo potrebbe essere impossibile (docenti o classi con troppe ore). */
-    public static List<String> controllaCapacita(List<Lezione> lezioni, int numGiorni, int oreGiornaliere) {
-        return controllaCapacita(lezioni, numGiorni, oreGiornaliere, null);
-    }
-
-    /** Come sopra, togliendo agli slot dei docenti quelli esclusi dai loro vincoli obbligatori. */
+    /** Segnala docenti o classi con ore richieste superiori agli slot disponibili. */
     public static List<String> controllaCapacita(List<Lezione> lezioni, int numGiorni, int oreGiornaliere,
                                                  GestoreDati vincoli) {
         List<String> avvisi = new ArrayList<>();
@@ -678,7 +619,7 @@ public class GeneratoreOrario {
         for (Lezione l : lezioni) {
             perDocente.merge(l.getDocente().getNome(), 1, Integer::sum);
             String t = teoria.get(l.getClasse().toString() + "|" + l.getMateria().getNome());
-            if (t == null || t.equals(l.getDocente().getNome())) {   // il laboratorio e' dentro le ore della teoria
+            if (t == null || t.equals(l.getDocente().getNome())) {
                 perClasse.merge(l.getClasse().toString(), 1, Integer::sum);
             }
         }
@@ -688,9 +629,8 @@ public class GeneratoreOrario {
         for (Map.Entry<String, Integer> e : perDocente.entrySet()) {
             boolean giornoLibero = vincoli != null && vincoli.giornoLibero.containsKey(e.getKey());
             boolean senzaPrima = vincoli != null && vincoli.senzaPrimaOra.contains(e.getKey());
-            int giorniAttivi = numGiorni - 1;     // ogni docente ha comunque almeno un giorno libero
-            long pomDocente = Math.min((long) giorniAttivi * Math.min(pomeriggio, MAX_ORE_POMERIGGIO_GIORNO),
-                    (long) MAX_ORE_POMERIGGIO_SETTIMANA);
+            int giorniAttivi = numGiorni - 1;
+            long pomDocente = (long) giorniAttivi * Math.min(pomeriggio, MAX_ORE_POMERIGGIO_GIORNO);
             long capacitaDocente = (long) giorniAttivi * (mattina - (senzaPrima ? 1 : 0)) + pomDocente;
             if (e.getValue() > capacitaDocente) {
                 avvisi.add("Docente " + e.getKey() + ": " + e.getValue() + " ore richieste, massimo possibile " + capacitaDocente
@@ -706,18 +646,61 @@ public class GeneratoreOrario {
     }
 
     // ------------------------------------------------------------------------------------
-    // Esportazione PDF (senza librerie esterne): una pagina A4 orizzontale per ogni tabella
+    // Esportazione CSV
+    // ------------------------------------------------------------------------------------
+
+    public static void esportaCsv(Path file, List<String> titoli, List<String[][]> tabelle, String[] nomiGiorni)
+            throws IOException {
+        StringBuilder sb = new StringBuilder();
+        sb.append('\uFEFF'); // BOM UTF-8 per apertura corretta in Excel
+        for (int i = 0; i < tabelle.size(); i++) {
+            sb.append(escCsv(titoli.get(i))).append("\r\n");
+            sb.append("Ora");
+            for (String g : nomiGiorni) {
+                sb.append(';').append(escCsv(g));
+            }
+            sb.append("\r\n");
+
+            String[][] celle = tabelle.get(i);
+            for (int o = 0; o < celle.length; o++) {
+                int ora = o + 1;
+                sb.append((7 + ora)).append(":00-").append((8 + ora)).append(":00");
+                for (int d = 0; d < nomiGiorni.length; d++) {
+                    sb.append(';');
+                    if (ora == ORA_PAUSA) {
+                        sb.append("PAUSA");
+                    } else {
+                        String val = celle[o][d] == null ? "" : celle[o][d];
+                        sb.append(escCsv(val));
+                    }
+                }
+                sb.append("\r\n");
+            }
+            if (i < tabelle.size() - 1) {
+                sb.append("\r\n");
+            }
+        }
+        Files.write(file, sb.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static String escCsv(String s) {
+        if (s == null) {
+            return "";
+        }
+        if (s.contains(";") || s.contains("\"") || s.contains("\n") || s.contains("\r")) {
+            return "\"" + s.replace("\"", "\"\"") + "\"";
+        }
+        return s;
+    }
+
+    // ------------------------------------------------------------------------------------
+    // Esportazione PDF
     // ------------------------------------------------------------------------------------
 
     private static final Charset WIN = Charset.forName("windows-1252");
     private static final double PDF_W = 842;
     private static final double PDF_H = 595;
 
-    /**
-     * @param titoli    titolo di ogni pagina
-     * @param tabelle   una per pagina, indicizzata [ora - 1][giorno] (testo vuoto = cella libera)
-     * @param nomiGiorni nomi delle colonne
-     */
     public static void esportaPdf(Path file, List<String> titoli, List<String[][]> tabelle, String[] nomiGiorni)
             throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -791,7 +774,7 @@ public class GeneratoreOrario {
 
         for (int o = 0; o < nOre; o++) {
             int ora = o + 1;
-            if (ora == ORA_PAUSA) {                         // riga grigia: 13-14 non assegnabile
+            if (ora == ORA_PAUSA) {
                 cella(sb, x0, y - hPausa, wOra + nGiorni * wGiorno, hPausa, 0.90, "F1", 8, "13-14  pausa", false);
                 y -= hPausa;
                 continue;
@@ -806,7 +789,6 @@ public class GeneratoreOrario {
         return sb.toString();
     }
 
-    // gray >= 0: grigio uniforme; gray < 0: colore pastello derivato dal testo prima di " - "
     private static void cella(StringBuilder sb, double x, double y, double w, double h, double gray,
                               String font, int size, String testo, boolean centrato) {
         if (gray < 0) {
@@ -824,7 +806,6 @@ public class GeneratoreOrario {
         if (testo.isEmpty()) {
             return;
         }
-        // a capo semplice: circa 0.5 * size punti per carattere
         int maxCar = Math.max(4, (int) ((w - 8) / (size * 0.5)));
         List<String> righe = new ArrayList<>();
         StringBuilder cur = new StringBuilder();
@@ -854,4 +835,3 @@ public class GeneratoreOrario {
         sb.append(String.format(Locale.ROOT, "BT /%s %d Tf %.1f %.1f Td (%s) Tj ET\n", font, size, x, y, esc(t)));
     }
 }
-//14/11

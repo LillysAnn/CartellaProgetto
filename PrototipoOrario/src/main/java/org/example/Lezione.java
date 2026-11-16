@@ -5,10 +5,8 @@ public class Lezione {
     private Docente docente;
     private Materia materia;
     private Classe classe;
-
-    // Campi per l'orario
-    private String giorno; // es. "Lunedi"
-    private int ora;       // es. 1 (prima ora)
+    private String giorno;
+    private int ora;
 
     public Lezione(String id, Docente docente, Materia materia, Classe classe) {
         this.id = id;
@@ -16,7 +14,7 @@ public class Lezione {
         this.materia = materia;
         this.classe = classe;
         this.giorno = null;
-        this.ora = -1;
+       this.ora = -1;
     }
 
     public String getId() {

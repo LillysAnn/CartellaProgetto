@@ -60,7 +60,7 @@ public class csvLayout extends JFrame{
 
     private void caricaFile() {
         String p = percorsoText.getText().trim();
-        // se il percorso e' stato copiato con le virgolette (Windows: "Copia come percorso") le togliamo
+        // se il percorso è stato copiato con le virgolette (Windows: "Copia come percorso"), si tolgono
         if (p.length() >= 2 && p.startsWith("\"") && p.endsWith("\"")) {
             p = p.substring(1, p.length() - 1);
         }
@@ -77,5 +77,3 @@ public class csvLayout extends JFrame{
     }
 
 }
-
-//14/11

@@ -29,7 +29,7 @@ public class Classe {
         return oreSettimanali;
     }
 
-    // Nome breve che identifica la classe (es. "5A INFO"): serve per la tabella e per i controlli di sovrapposizione
+    // es. "5A INFO" per la tabella e per i controlli di sovrapposizione
     public String toString() {
         return anno + "" + sezione + " " + indirizzo;
     }
