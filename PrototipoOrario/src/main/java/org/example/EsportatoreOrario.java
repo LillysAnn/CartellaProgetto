@@ -16,7 +16,7 @@ public class EsportatoreOrario {
     public static void esportaCsv(Path file, List<String> titoli, List<String[][]> tabelle, String[] nomiGiorni)
             throws IOException {
         StringBuilder sb = new StringBuilder();
-        sb.append('\uFEFF'); // BOM UTF-8 per apertura corretta in Excel
+        sb.append('\uFEFF');
         for (int i = 0; i < tabelle.size(); i++) {
             sb.append(escCsv(titoli.get(i))).append("\r\n");
             sb.append("Ora");
