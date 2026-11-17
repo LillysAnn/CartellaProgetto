@@ -233,7 +233,8 @@ public class EsempioGridlayout extends JFrame {
         List<Lezione> nonCollocate = GeneratoreOrario.genera(gestore.getListaLezioni(), giorni, GIORNI_ATTIVI, ORE_ATTIVE, gestore);
         aggiornaVista();
 
-        List<String> violazioni = GeneratoreOrario.verifica(gestore.getListaLezioni(), gestore, giorni);
+       // List<String> violazioni = GeneratoreOrario.verifica(gestore.getListaLezioni(), gestore, giorni);
+        List<String> violazioni = ValidatoreOrario.verifica(gestore.getListaLezioni(), gestore, giorni);
         if (!violazioni.isEmpty()) {
             StringBuilder v = new StringBuilder("L'orario viola dei vincoli obbligatori:");
             appendiElenco(v, violazioni, 10);
@@ -244,7 +245,8 @@ public class EsempioGridlayout extends JFrame {
         int totali = gestore.getListaLezioni().size();
         if (nonCollocate.isEmpty()) {
             StringBuilder ok = new StringBuilder("Orario generato: tutte le " + totali + " lezioni sono state collocate.");
-            List<String> prefNonRispettate = GeneratoreOrario.preferenzeNonRispettate(gestore.getListaLezioni(), gestore, giorni);
+          //  List<String> prefNonRispettate = GeneratoreOrario.preferenzeNonRispettate(gestore.getListaLezioni(), gestore, giorni);
+            List<String> prefNonRispettate = ValidatoreOrario.preferenzeNonRispettate(gestore.getListaLezioni(), gestore, giorni);
             if (!prefNonRispettate.isEmpty()) {
                 ok.append("\n\nPreferenze non rispettate (").append(prefNonRispettate.size()).append("):");
                 appendiElenco(ok, prefNonRispettate, 10);
@@ -261,8 +263,10 @@ public class EsempioGridlayout extends JFrame {
             }
             appendiElenco(msg, elencoNonCollocate, 15);
 
-            List<String> cause = GeneratoreOrario.controllaCapacita(gestore.getListaLezioni(), GIORNI_ATTIVI, ORE_ATTIVE, gestore);
-            List<String> vincoliCoinvolti = GeneratoreOrario.vincoliDocentiCoinvolti(nonCollocate, gestore);
+           // List<String> cause = GeneratoreOrario.controllaCapacita(gestore.getListaLezioni(), GIORNI_ATTIVI, ORE_ATTIVE, gestore);
+           // List<String> vincoliCoinvolti = GeneratoreOrario.vincoliDocentiCoinvolti(nonCollocate, gestore);
+            List<String> cause = ValidatoreOrario.controllaCapacita(gestore.getListaLezioni(), GIORNI_ATTIVI, ORE_ATTIVE, gestore);
+            List<String> vincoliCoinvolti = ValidatoreOrario.vincoliDocentiCoinvolti(nonCollocate, gestore);
             if (!vincoliCoinvolti.isEmpty()) {
                 msg.append("\n\nDocenti coinvolti con vincoli obbligatori (riducono gli slot disponibili):");
                 appendiElenco(msg, vincoliCoinvolti, 10);
@@ -580,9 +584,11 @@ public class EsempioGridlayout extends JFrame {
         tabelle.add(tabellaOrario(selezionato, vistaClasse, !pdf));
         try {
             if (pdf) {
-                GeneratoreOrario.esportaPdf(file.toPath(), titoli, tabelle, giorni);
+               // GeneratoreOrario.esportaPdf(file.toPath(), titoli, tabelle, giorni);
+                EsportatoreOrario.esportaPdf(file.toPath(), titoli, tabelle, giorni);
             } else {
-                GeneratoreOrario.esportaCsv(file.toPath(), titoli, tabelle, giorni);
+               // GeneratoreOrario.esportaCsv(file.toPath(), titoli, tabelle, giorni);
+                EsportatoreOrario.esportaCsv(file.toPath(), titoli, tabelle, giorni);
             }
             JOptionPane.showMessageDialog(this,
                     (pdf ? "PDF" : "CSV") + " salvato per " + titoloTabella + ":\n" + file.getAbsolutePath(),

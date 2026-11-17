@@ -1,24 +1,12 @@
 package org.example;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
-import java.util.Set;
-import java.util.TreeMap;
-import java.util.TreeSet;
 
 public class GeneratoreOrario {
 
@@ -108,10 +96,19 @@ public class GeneratoreOrario {
             }
         }
 
-        // Vincoli dei docenti
+        // Vincoli dei docenti (incluso divieto pomeriggio di sabato)
         boolean[][] bloccato = new boolean[nDoc][slot];
         boolean[] evitaUltima = new boolean[nDoc];
         boolean[] compatte = new boolean[nDoc];
+        for (int gi = 0; gi < numGiorni; gi++) {
+            if ("Sabato".equalsIgnoreCase(nomiGiorni[gi])) {
+                for (int d = 0; d < nDoc; d++) {
+                    for (int o = PRIMA_ORA_POMERIGGIO - 1; o < oreGiornaliere; o++) {
+                        bloccato[d][gi * oreGiornaliere + o] = true;
+                    }
+                }
+            }
+        }
         if (vincoli != null) {
             for (Map.Entry<String, Integer> e : idDocenti.entrySet()) {
                 String nome = e.getKey();
@@ -280,7 +277,6 @@ public class GeneratoreOrario {
         }
         return nonCollocate;
     }
-
 
     public static Map<String, String> docenteTeoria(List<Lezione> lezioni) {
         Map<String, Map<String, Integer>> ore = new HashMap<>();
@@ -452,7 +448,7 @@ public class GeneratoreOrario {
     }
 
     // Ore vuote tra la prima e l'ultima lezione del giorno
-    private static int buchi(boolean[] occ, int giorno, int oreGiornaliere) {
+    public static int buchi(boolean[] occ, int giorno, int oreGiornaliere) {
         int prima = -1;
         int ultima = -1;
         for (int ora = 1; ora <= oreGiornaliere; ora++) {
@@ -473,346 +469,5 @@ public class GeneratoreOrario {
             }
         }
         return b;
-    }
-
-    public static List<String> verifica(List<Lezione> lezioni, GestoreDati vincoli, String[] nomiGiorni) {
-        List<String> errori = new ArrayList<>();
-        Map<String, Set<String>> giorniDocente = new TreeMap<>();
-        Map<String, Lezione> docenteSlot = new HashMap<>();
-        Map<String, Lezione> classeSlot = new HashMap<>();
-        Map<String, Integer> pomGiorno = new HashMap<>();
-        Map<String, String> teoria = docenteTeoria(lezioni);
-
-        for (Lezione l : lezioni) {
-            if (l.getGiorno() == null) {
-                continue;
-            }
-            giorniDocente.computeIfAbsent(l.getDocente().getNome(), k -> new HashSet<>()).add(l.getGiorno());
-            String quando = l.getGiorno() + " ora " + l.getOra();
-            if (l.getOra() == ORA_PAUSA) {
-                errori.add("Lezione nella pausa 13-14: " + l.getId());
-            }
-            if (vincoli != null) {
-                String giornoLibero = vincoli.giornoLibero.get(l.getDocente().getNome());
-                if (giornoLibero != null && giornoLibero.equals(l.getGiorno())) {
-                    errori.add("Docente " + l.getDocente().getNome() + " ha una lezione nel suo giorno libero (" + giornoLibero + ")");
-                }
-                if (l.getOra() == 1 && vincoli.senzaPrimaOra.contains(l.getDocente().getNome())) {
-                    errori.add("Docente " + l.getDocente().getNome() + " ha una lezione alla prima ora (" + l.getGiorno() + ")");
-                }
-            }
-            Lezione altra = docenteSlot.put(l.getDocente().getNome() + "|" + quando, l);
-            if (altra != null) {
-                errori.add("Docente " + l.getDocente().getNome() + " ha due lezioni insieme (" + quando + ")");
-            }
-            altra = classeSlot.put(l.getClasse().toString() + "|" + quando, l);
-            boolean compresenza = altra != null && altra.getMateria().getNome().equals(l.getMateria().getNome())
-                    && teoria.containsKey(l.getClasse().toString() + "|" + l.getMateria().getNome());
-            if (altra != null && !compresenza) {
-                errori.add("Classe " + l.getClasse().toString() + " ha due lezioni insieme (" + quando + ")");
-            }
-            if (l.getOra() >= PRIMA_ORA_POMERIGGIO) {
-                int g = pomGiorno.merge(l.getDocente().getNome() + "|" + l.getGiorno(), 1, Integer::sum);
-                if (g == MAX_ORE_POMERIGGIO_GIORNO + 1) {
-                    errori.add("Docente " + l.getDocente().getNome() + " ha piu' di " + MAX_ORE_POMERIGGIO_GIORNO
-                            + " ore al pomeriggio di " + l.getGiorno());
-                }
-            }
-        }
-        if (nomiGiorni != null) {
-            for (Map.Entry<String, Set<String>> e : giorniDocente.entrySet()) {
-                if (e.getValue().size() >= nomiGiorni.length) {
-                    errori.add("Docente " + e.getKey() + " ha lezione in tutti i giorni: manca il giorno libero");
-                }
-            }
-        }
-        return errori;
-    }
-
-    public static List<String> preferenzeNonRispettate(List<Lezione> lezioni, GestoreDati vincoli, String[] nomiGiorni) {
-        List<String> report = new ArrayList<>();
-        if (vincoli == null) {
-            return report;
-        }
-        Map<String, Integer> indiceGiorno = new HashMap<>();
-        for (int i = 0; i < nomiGiorni.length; i++) {
-            indiceGiorno.put(nomiGiorni[i], i);
-        }
-        Map<String, boolean[]> occ = new TreeMap<>();
-        for (Lezione l : lezioni) {
-            Integer gi = l.getGiorno() == null ? null : indiceGiorno.get(l.getGiorno());
-            if (gi != null && l.getOra() >= 1 && l.getOra() <= MAX_ORE_GIORNATA) {
-                occ.computeIfAbsent(l.getDocente().getNome(), k -> new boolean[nomiGiorni.length * MAX_ORE_GIORNATA])[gi * MAX_ORE_GIORNATA + l.getOra() - 1] = true;
-            }
-        }
-        for (Map.Entry<String, boolean[]> e : occ.entrySet()) {
-            String docente = e.getKey();
-            boolean[] o = e.getValue();
-            if (vincoli.evitaUltimaOra.contains(docente)) {
-                StringBuilder giorni = new StringBuilder();
-                for (int gi = 0; gi < nomiGiorni.length; gi++) {
-                    if (o[gi * MAX_ORE_GIORNATA + ULTIMA_ORA - 1]) {
-                        giorni.append(giorni.length() > 0 ? ", " : "").append(nomiGiorni[gi]);
-                    }
-                }
-                if (giorni.length() > 0) {
-                    report.add("Docente " + docente + ": preferiva non fare l'ultima ora (12:00) ma l'ha in " + giorni
-                            + " (nessuno slot alternativo libero compatibile con gli altri vincoli)");
-                }
-            }
-            if (vincoli.oreCompatte.contains(docente)) {
-                StringBuilder dettaglioBuchi = new StringBuilder();
-                int totale = 0;
-                for (int gi = 0; gi < nomiGiorni.length; gi++) {
-                    int b = buchi(o, gi, MAX_ORE_GIORNATA);
-                    if (b > 0) {
-                        totale += b;
-                        dettaglioBuchi.append(dettaglioBuchi.length() > 0 ? ", " : "").append(nomiGiorni[gi]).append(": ").append(b);
-                    }
-                }
-                if (totale > 0) {
-                    report.add("Docente " + docente + ": preferiva ore compatte ma ha " + totale + " ore buche (" + dettaglioBuchi
-                            + "); non c'era un'alternativa migliore con gli altri vincoli");
-                }
-            }
-        }
-        return report;
-    }
-
-    public static List<String> vincoliDocentiCoinvolti(List<Lezione> nonCollocate, GestoreDati vincoli) {
-        List<String> righe = new ArrayList<>();
-        if (vincoli == null) {
-            return righe;
-        }
-        Set<String> visti = new TreeSet<>();
-        for (Lezione l : nonCollocate) {
-            visti.add(l.getDocente().getNome());
-        }
-        for (String d : visti) {
-            String giorno = vincoli.giornoLibero.get(d);
-            boolean prima = vincoli.senzaPrimaOra.contains(d);
-            if (giorno != null || prima) {
-                righe.add("Docente " + d + ": " + (giorno != null ? "giorno libero " + giorno : "")
-                        + (giorno != null && prima ? " e " : "") + (prima ? "niente prima ora" : ""));
-            }
-        }
-        return righe;
-    }
-
-    public static List<String> controllaCapacita(List<Lezione> lezioni, int numGiorni, int oreGiornaliere,
-                                                 GestoreDati vincoli) {
-        List<String> avvisi = new ArrayList<>();
-        Map<String, Integer> perDocente = new TreeMap<>();
-        Map<String, Integer> perClasse = new TreeMap<>();
-        Map<String, String> teoria = docenteTeoria(lezioni);
-        for (Lezione l : lezioni) {
-            perDocente.merge(l.getDocente().getNome(), 1, Integer::sum);
-            String t = teoria.get(l.getClasse().toString() + "|" + l.getMateria().getNome());
-            if (t == null || t.equals(l.getDocente().getNome())) {
-                perClasse.merge(l.getClasse().toString(), 1, Integer::sum);
-            }
-        }
-        int mattina = ORA_PAUSA - 1;
-        int pomeriggio = oreGiornaliere - ORA_PAUSA;
-        long capacitaClasse = (long) numGiorni * (mattina + pomeriggio);
-        for (Map.Entry<String, Integer> e : perDocente.entrySet()) {
-            boolean giornoLibero = vincoli != null && vincoli.giornoLibero.containsKey(e.getKey());
-            boolean senzaPrima = vincoli != null && vincoli.senzaPrimaOra.contains(e.getKey());
-            int giorniAttivi = numGiorni - 1;
-            long pomDocente = (long) giorniAttivi * Math.min(pomeriggio, MAX_ORE_POMERIGGIO_GIORNO);
-            long capacitaDocente = (long) giorniAttivi * (mattina - (senzaPrima ? 1 : 0)) + pomDocente;
-            if (e.getValue() > capacitaDocente) {
-                avvisi.add("Docente " + e.getKey() + ": " + e.getValue() + " ore richieste, massimo possibile " + capacitaDocente
-                        + " (ogni docente ha almeno un giorno libero" + (senzaPrima || giornoLibero ? " e questo docente ha altri vincoli obbligatori" : "") + ")");
-            }
-        }
-        for (Map.Entry<String, Integer> e : perClasse.entrySet()) {
-            if (e.getValue() > capacitaClasse) {
-                avvisi.add("Classe " + e.getKey() + ": " + e.getValue() + " ore richieste, slot disponibili " + capacitaClasse);
-            }
-        }
-        return avvisi;
-    }
-
-    public static void esportaCsv(Path file, List<String> titoli, List<String[][]> tabelle, String[] nomiGiorni)
-            throws IOException {
-        StringBuilder sb = new StringBuilder();
-        sb.append('\uFEFF'); // BOM UTF-8 per apertura corretta in Excel
-        for (int i = 0; i < tabelle.size(); i++) {
-            sb.append(escCsv(titoli.get(i))).append("\r\n");
-            sb.append("Ora");
-            for (String g : nomiGiorni) {
-                sb.append(';').append(escCsv(g));
-            }
-            sb.append("\r\n");
-
-            String[][] celle = tabelle.get(i);
-            for (int o = 0; o < celle.length; o++) {
-                int ora = o + 1;
-                sb.append((7 + ora)).append(":00-").append((8 + ora)).append(":00");
-                for (int d = 0; d < nomiGiorni.length; d++) {
-                    sb.append(';');
-                    if (ora == ORA_PAUSA) {
-                        sb.append("PAUSA");
-                    } else {
-                        String val = celle[o][d] == null ? "" : celle[o][d];
-                        sb.append(escCsv(val));
-                    }
-                }
-                sb.append("\r\n");
-            }
-            if (i < tabelle.size() - 1) {
-                sb.append("\r\n");
-            }
-        }
-        Files.write(file, sb.toString().getBytes(StandardCharsets.UTF_8));
-    }
-
-    private static String escCsv(String s) {
-        if (s == null) {
-            return "";
-        }
-        if (s.contains(";") || s.contains("\"") || s.contains("\n") || s.contains("\r")) {
-            return "\"" + s.replace("\"", "\"\"") + "\"";
-        }
-        return s;
-    }
-
-    private static final Charset WIN = Charset.forName("windows-1252");
-    private static final double PDF_W = 842;
-    private static final double PDF_H = 595;
-
-    public static void esportaPdf(Path file, List<String> titoli, List<String[][]> tabelle, String[] nomiGiorni)
-            throws IOException {
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        int pagine = tabelle.size();
-        int nObj = 5 + 2 * pagine;
-        int[] off = new int[nObj];
-        scrivi(out, "%PDF-1.4\n");
-
-        off[1] = out.size();
-        scrivi(out, "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
-        StringBuilder kids = new StringBuilder();
-        for (int i = 0; i < pagine; i++) {
-            kids.append(5 + 2 * i).append(" 0 R ");
-        }
-        off[2] = out.size();
-        scrivi(out, "2 0 obj\n<< /Type /Pages /Kids [" + kids + "] /Count " + pagine + " >>\nendobj\n");
-        off[3] = out.size();
-        scrivi(out, "3 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>\nendobj\n");
-        off[4] = out.size();
-        scrivi(out, "4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>\nendobj\n");
-
-        for (int i = 0; i < pagine; i++) {
-            int pg = 5 + 2 * i;
-            int ct = 6 + 2 * i;
-            byte[] contenuto = contenutoPagina(titoli.get(i), tabelle.get(i), nomiGiorni).getBytes(WIN);
-            off[pg] = out.size();
-            scrivi(out, pg + " 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " + (int) PDF_W + " " + (int) PDF_H
-                    + "] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents " + ct + " 0 R >>\nendobj\n");
-            off[ct] = out.size();
-            scrivi(out, ct + " 0 obj\n<< /Length " + contenuto.length + " >>\nstream\n");
-            out.write(contenuto);
-            scrivi(out, "\nendstream\nendobj\n");
-        }
-
-        int xref = out.size();
-        scrivi(out, "xref\n0 " + nObj + "\n0000000000 65535 f \n");
-        for (int i = 1; i < nObj; i++) {
-            scrivi(out, String.format(Locale.ROOT, "%010d 00000 n \n", off[i]));
-        }
-        scrivi(out, "trailer\n<< /Size " + nObj + " /Root 1 0 R >>\nstartxref\n" + xref + "\n%%EOF\n");
-        Files.write(file, out.toByteArray());
-    }
-
-    private static void scrivi(OutputStream o, String s) throws IOException {
-        o.write(s.getBytes(WIN));
-    }
-
-    private static String esc(String s) {
-        return s.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)");
-    }
-
-    private static String contenutoPagina(String titolo, String[][] celle, String[] nomiGiorni) {
-        StringBuilder sb = new StringBuilder();
-        int nOre = celle.length;
-        int nGiorni = nomiGiorni.length;
-        double x0 = 40;
-        double wOra = 62;
-        double wGiorno = (PDF_W - 2 * x0 - wOra) / nGiorni;
-        double hRiga = 46;
-        double hPausa = 22;
-        double hIntest = 24;
-        double y = PDF_H - 70;
-
-        testo(sb, "F2", 16, x0, PDF_H - 45, titolo);
-
-        cella(sb, x0, y - hIntest, wOra, hIntest, 0.80, "F2", 9, "Ora", true);
-        for (int d = 0; d < nGiorni; d++) {
-            cella(sb, x0 + wOra + d * wGiorno, y - hIntest, wGiorno, hIntest, 0.80, "F2", 9, nomiGiorni[d], true);
-        }
-        y -= hIntest;
-
-        for (int o = 0; o < nOre; o++) {
-            int ora = o + 1;
-            if (ora == ORA_PAUSA) {
-                cella(sb, x0, y - hPausa, wOra + nGiorni * wGiorno, hPausa, 0.90, "F1", 8, "13-14  pausa", false);
-                y -= hPausa;
-                continue;
-            }
-            cella(sb, x0, y - hRiga, wOra, hRiga, 0.92, "F2", 9, (7 + ora) + "-" + (8 + ora), true);
-            for (int d = 0; d < nGiorni; d++) {
-                String t = celle[o][d] == null ? "" : celle[o][d];
-                cella(sb, x0 + wOra + d * wGiorno, y - hRiga, wGiorno, hRiga, t.isEmpty() ? 1.0 : -1, "F1", 8, t, false);
-            }
-            y -= hRiga;
-        }
-        return sb.toString();
-    }
-
-    private static void cella(StringBuilder sb, double x, double y, double w, double h, double gray,
-                              String font, int size, String testo, boolean centrato) {
-        if (gray < 0) {
-            int hash = Math.abs(testo.split(" - ")[0].hashCode());
-            double r = 0.75 + (hash % 25) / 100.0;
-            double g = 0.75 + ((hash / 25) % 25) / 100.0;
-            double b = 0.75 + ((hash / 625) % 25) / 100.0;
-            sb.append(String.format(Locale.ROOT, "%.2f %.2f %.2f rg\n", r, g, b));
-        } else {
-            sb.append(String.format(Locale.ROOT, "%.2f g\n", gray));
-        }
-        sb.append("0.5 G 0.5 w\n");
-        sb.append(String.format(Locale.ROOT, "%.1f %.1f %.1f %.1f re B\n", x, y, w, h));
-        sb.append("0 g\n");
-        if (testo.isEmpty()) {
-            return;
-        }
-        int maxCar = Math.max(4, (int) ((w - 8) / (size * 0.5)));
-        List<String> righe = new ArrayList<>();
-        StringBuilder cur = new StringBuilder();
-        for (String parola : testo.split(" ")) {
-            if (cur.length() > 0 && cur.length() + 1 + parola.length() > maxCar) {
-                righe.add(cur.toString());
-                cur.setLength(0);
-            }
-            if (cur.length() > 0) {
-                cur.append(' ');
-            }
-            cur.append(parola);
-        }
-        if (cur.length() > 0) {
-            righe.add(cur.toString());
-        }
-        double interlinea = size + 2;
-        double ty = y + h / 2 + (righe.size() - 1) * interlinea / 2 - size * 0.35;
-        for (String r : righe) {
-            double tx = centrato ? x + w / 2 - r.length() * size * 0.25 : x + 4;
-            testo(sb, font, size, tx, ty, r);
-            ty -= interlinea;
-        }
-    }
-
-    private static void testo(StringBuilder sb, String font, int size, double x, double y, String t) {
-        sb.append(String.format(Locale.ROOT, "BT /%s %d Tf %.1f %.1f Td (%s) Tj ET\n", font, size, x, y, esc(t)));
     }
 }
